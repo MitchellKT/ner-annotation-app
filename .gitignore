@@ -1,0 +1,36 @@
+# ───────────────────────── Python / backend ─────────────────────────
+# Virtual environment — machine-specific, large. Recreate with `uv sync`.
+backend/.venv/
+.venv/
+venv/
+
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# ───────────────────────── Node / frontend ──────────────────────────
+# Dependencies — recreate with `npm install`.
+node_modules/
+
+# Build output — recreate with `npm run build`.
+frontend/dist/
+dist/
+
+# ───────────────────────── Runtime annotation data ──────────────────
+# Generated when you run the annotator; this is user data, not source.
+*.state.json
+output.jsonl
+output*.jsonl
+annotations*.jsonl
+
+# ───────────────────────── Editor / OS ──────────────────────────────
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.log
