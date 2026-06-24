@@ -22,11 +22,22 @@ def main() -> None:
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", "-p", type=int, default=8000)
     parser.add_argument("--static", default=None, help="path to built frontend (frontend/dist)")
+    parser.add_argument(
+        "--types",
+        "-t",
+        required=True,
+        help="comma-separated entity types, e.g. PER,LOC,ORG,TIME; "
+        "the first nine map to digit keys 1-9 in the UI",
+    )
     parser.add_argument("--no-open", action="store_true", help="don't open the browser on start")
     args = parser.parse_args()
 
+    types = [t.strip() for t in args.types.split(",") if t.strip()]
+    if not types:
+        parser.error("--types must list at least one non-empty entity type")
+
     static_dir = Path(args.static) if args.static else DEFAULT_STATIC
-    store = Store(args.input, args.output)
+    store = Store(args.input, args.output, types=types)
 
     if store.warnings:
         print(f"[ner_annotator] {len(store.warnings)} load warning(s):")
@@ -37,6 +48,7 @@ def main() -> None:
 
     url = f"http://{args.host}:{args.port}/"
     print(f"[ner_annotator] {len(store.order)} docs loaded from {args.input}")
+    print(f"[ner_annotator] entity types: {', '.join(store.types)}")
     print(f"[ner_annotator] writing annotations to {args.output}")
     print(f"[ner_annotator] serving at {url}")
     if not args.no_open and static_dir.exists():

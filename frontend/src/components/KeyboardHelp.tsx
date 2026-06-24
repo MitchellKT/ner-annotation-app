@@ -1,27 +1,35 @@
 import { Fragment } from "react";
-
-const ROWS: [string, string][] = [
-  ["P / L / O / T", "New entity (PER/LOC/ORG/TIME) from the selected text"],
-  ["1 – 9", "Add selection to entity N (and make it active)"],
-  ["click entity (text selected)", "Add the selection to that entity — works for any entity, incl. beyond 9"],
-  ["a", "Add selection to the active entity"],
-  ["n", "New empty entity"],
-  ["Tab / Shift+Tab", "Cycle the active entity"],
-  ["click highlight", "Make that entity active"],
-  ["Del / Backspace", "Delete the hovered mention"],
-  ["r", "Confirm / unconfirm the active entity"],
-  ["A", "Accept all (confirm every entity)"],
-  ["m", "Merge: press m, then click another entity (or drag card onto card)"],
-  ["s", "Split the hovered mention into its own entity"],
-  ["drag chip → card", "Reassign a mention to another entity"],
-  ["Esc", "Cancel a pending merge / clear selection"],
-  ["Ctrl+Z / Ctrl+Shift+Z", "Undo / redo"],
-  ["d", "Mark document done & go to next unreviewed"],
-  ["← / →", "Previous / next document"],
-  ["?", "Toggle this help"],
-];
+import { useStore } from "../store";
 
 export function KeyboardHelp({ onClose }: { onClose: () => void }) {
+  const types = useStore((s) => s.config?.types ?? ["PER", "LOC", "ORG", "TIME"]);
+
+  // Show which digit creates which type (only the first nine are reachable).
+  const digitLegend = types
+    .slice(0, 9)
+    .map((t, i) => `${i + 1}=${t}`)
+    .join("  ");
+
+  const rows: [string, string][] = [
+    ["1 – 9", `New entity from the selected text (${digitLegend || "by type"})`],
+    ["1 – 9 (no selection)", "Change the active entity's type"],
+    ["click entity (text selected)", "Add the selection to that entity (the only way to extend an entity)"],
+    ["n", "New empty entity"],
+    ["Tab / Shift+Tab", "Cycle the active entity"],
+    ["click highlight", "Make that entity active"],
+    ["Del / Backspace", "Delete the hovered mention"],
+    ["r", "Confirm / unconfirm the active entity"],
+    ["A", "Accept all (confirm every entity)"],
+    ["m", "Merge: press m, then click another entity (or drag card onto card)"],
+    ["s", "Split the hovered mention into its own entity"],
+    ["drag chip → card", "Reassign a mention to another entity"],
+    ["Esc", "Cancel a pending merge / clear selection"],
+    ["Ctrl+Z / Ctrl+Shift+Z", "Undo / redo"],
+    ["d", "Mark document done & go to next unreviewed"],
+    ["← / →", "Previous / next document"],
+    ["?", "Toggle this help"],
+  ];
+
   return (
     <div className="overlay" onClick={onClose}>
       <div className="help-card" onClick={(e) => e.stopPropagation()}>
@@ -30,7 +38,7 @@ export function KeyboardHelp({ onClose }: { onClose: () => void }) {
           Select text, then assign it to an entity. Set an entity “active” to add several mentions to it quickly.
         </p>
         <div className="help-grid">
-          {ROWS.map(([k, d]) => (
+          {rows.map(([k, d]) => (
             <Fragment key={k}>
               <kbd className="k">{k}</kbd>
               <span>{d}</span>

@@ -33,6 +33,14 @@ const TYPE_COLORS: Record<string, string> = {
   TIME: "#9333ea",
 };
 
+// Custom (configured) types that aren't in the canonical set get a stable,
+// distinct color derived from the label so the chips stay easy to tell apart.
+function hueForType(type: string): number {
+  let h = 0;
+  for (let i = 0; i < type.length; i++) h = (h * 31 + type.charCodeAt(i)) >>> 0;
+  return h % 360;
+}
+
 export function colorForType(type: string): string {
-  return TYPE_COLORS[type] ?? "#64748b";
+  return TYPE_COLORS[type] ?? `hsl(${hueForType(type)} 55% 42%)`;
 }

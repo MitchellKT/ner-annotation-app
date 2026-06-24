@@ -7,6 +7,7 @@ import { TextPanel } from "./components/TextPanel";
 import { EntityPanel } from "./components/EntityPanel";
 import { KeyboardHelp } from "./components/KeyboardHelp";
 import { cpSlice } from "./lib/offsets";
+import { colorForType } from "./colors";
 
 export default function App() {
   const init = useStore((s) => s.init);
@@ -20,6 +21,7 @@ export default function App() {
   const cps = useStore((s) => s.cps);
   const activeEntityId = useStore((s) => s.activeEntityId);
   const entities = useStore((s) => s.entities);
+  const types = useStore((s) => s.config?.types ?? ["PER", "LOC", "ORG", "TIME"]);
 
   const [showHelp, setShowHelp] = useState(false);
   useKeyboard(() => setShowHelp((v) => !v));
@@ -51,16 +53,21 @@ export default function App() {
               <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} />
               snap to words
             </label>
-            <span style={{ fontSize: 12, color: "var(--muted)" }}>
-              {selPreview ? (
-                <>selection: <strong>“<bdi>{selPreview.slice(0, 40)}</bdi>”</strong> — press <kbd>P L O T</kbd>, <kbd>1-9</kbd>, or click an entity</>
-              ) : (
-                "select text to annotate"
-              )}
+            <span className="type-legend" title="press a number to create an entity of that type from the selection">
+              {types.slice(0, 9).map((t, i) => (
+                <span key={t} className="type-legend-item">
+                  <kbd>{i + 1}</kbd>
+                  <span className="type-chip" style={{ background: colorForType(t) }}>{t}</span>
+                </span>
+              ))}
             </span>
             <span className="spacer" style={{ flex: 1 }} />
             <span style={{ fontSize: 12, color: "var(--muted)" }}>
-              active entity: {activeIdx >= 0 ? `#${activeIdx + 1} (${entities[activeIdx].type})` : "none"}
+              {selPreview ? (
+                <>selection: <strong>“<bdi>{selPreview.slice(0, 40)}</bdi>”</strong> — press a number, or click an entity to add</>
+              ) : (
+                `active entity: ${activeIdx >= 0 ? `#${activeIdx + 1} (${entities[activeIdx].type})` : "none"}`
+              )}
             </span>
           </div>
           {loading && <div className="center-msg">Loading…</div>}

@@ -36,47 +36,24 @@ export function useKeyboard(toggleHelp: () => void) {
       }
       if (e.ctrlKey || e.metaKey) return; // leave other ctrl combos to the browser
 
-      // entity type assignment / creation
-      const typeKey: Record<string, string> = { p: "PER", l: "LOC", o: "ORG", t: "TIME" };
-      const mapped = typeKey[e.key.toLowerCase()];
-      if (mapped && types.includes(mapped)) {
-        e.preventDefault();
-        if (span) {
-          s.createEntity(mapped, span);
-          s.setSelectionSpan(null);
-          clearNativeSelection();
-        } else if (s.activeEntityId) {
-          s.setEntityType(s.activeEntityId, mapped);
-        }
-        return;
-      }
-
-      // digits -> entity N
+      // digits 1-9 -> entity type N: create a new entity of that type from the
+      // selection, or (with nothing selected) retype the active entity.
       if (/^[1-9]$/.test(e.key)) {
-        const idx = Number(e.key) - 1;
-        const target = s.entities[idx];
-        if (target) {
+        const type = types[Number(e.key) - 1];
+        if (type) {
           e.preventDefault();
           if (span) {
-            s.addMention(target.id, span);
+            s.createEntity(type, span);
             s.setSelectionSpan(null);
             clearNativeSelection();
-          } else {
-            s.setActiveEntity(target.id);
+          } else if (s.activeEntityId) {
+            s.setEntityType(s.activeEntityId, type);
           }
         }
         return;
       }
 
       switch (e.key) {
-        case "a":
-          if (span) {
-            e.preventDefault();
-            s.addToActive(span);
-            s.setSelectionSpan(null);
-            clearNativeSelection();
-          }
-          return;
         case "A":
           e.preventDefault();
           s.acceptAll();

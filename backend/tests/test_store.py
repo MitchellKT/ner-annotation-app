@@ -104,6 +104,17 @@ def test_bad_lines_recorded_as_warnings(tmp_path):
     assert any("NOT JSON" in w or ":2:" in w for w in store.warnings)
 
 
+def test_config_defaults_and_custom_types(tmp_path):
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [{"doc_id": "d1", "text": "hello"}])
+
+    assert Store(inp, out).config()["types"] == ["PER", "LOC", "ORG", "TIME"]
+    custom = Store(inp, out, types=["PER", "LOC", "ORG", "MISC", "EVENT"])
+    assert custom.config()["types"] == ["PER", "LOC", "ORG", "MISC", "EVENT"]
+    assert custom.types == ["PER", "LOC", "ORG", "MISC", "EVENT"]
+
+
 def test_mention_rejects_bad_order():
     with pytest.raises(Exception):
         Mention.model_validate({"start": 5, "end": 5})

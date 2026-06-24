@@ -41,6 +41,7 @@ class Store:
         input_path: os.PathLike | str,
         output_path: os.PathLike | str,
         state_path: Optional[os.PathLike | str] = None,
+        types: Optional[List[str]] = None,
     ) -> None:
         self.input_path = Path(input_path)
         self.output_path = Path(output_path)
@@ -49,6 +50,8 @@ class Store:
             if state_path is not None
             else self.output_path.with_name(self.output_path.name + ".state.json")
         )
+        # Entity types offered in the UI (digit keys 1-9 map to the first nine).
+        self.types: List[str] = list(types) if types else list(CANONICAL_TYPES)
         self._lock = threading.RLock()
 
         self.order: List[str] = []
@@ -146,7 +149,7 @@ class Store:
 
     # ------------------------------------------------------------------- read
     def config(self) -> dict:
-        return {"types": list(CANONICAL_TYPES)}
+        return {"types": list(self.types)}
 
     def summaries(self) -> List[dict]:
         with self._lock:

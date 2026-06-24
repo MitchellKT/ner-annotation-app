@@ -87,8 +87,8 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
     >
       <div className="ecard-head">
         <span className="swatch" style={{ background: color.strong }} />
-        {/* 1–9 double as keyboard shortcuts; higher numbers are just labels. */}
-        <span className={"keyhint" + (index < 9 ? " hotkey" : "")} title={index < 9 ? `press ${index + 1}` : undefined}>
+        {/* Plain position label; assign a selection to this entity by clicking the card. */}
+        <span className="keyhint" title="click this card to add the selected text here">
           {index + 1}
         </span>
         <select

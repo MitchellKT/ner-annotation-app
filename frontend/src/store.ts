@@ -118,7 +118,6 @@ interface State {
   // mutations
   createEntity: (type: string, span: { start: number; end: number }) => void;
   addMention: (entityId: string, span: { start: number; end: number }) => void;
-  addToActive: (span: { start: number; end: number }) => void;
   newEmptyEntity: () => void;
   removeMention: (entityId: string, mentionId: string) => void;
   reassignMention: (mentionId: string, fromId: string, toId: string) => void;
@@ -318,12 +317,6 @@ export const useStore = create<State>((set, get) => {
         ),
         { activeId: entityId }
       );
-    },
-
-    addToActive(span) {
-      const s = get();
-      if (s.activeEntityId) s.addMention(s.activeEntityId, span);
-      else s.createEntity(s.config?.types[0] ?? "PER", span);
     },
 
     newEmptyEntity() {
