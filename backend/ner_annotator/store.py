@@ -23,16 +23,28 @@ import threading
 from pathlib import Path
 from typing import Dict, List, Optional
 
-from .models import CANONICAL_TYPES, Doc, Entity, Mention
+from .models import CANONICAL_TYPES, Doc, Entity, Fragment, Mention, merge_fragments
 
 VALID_STATUSES = ("unreviewed", "in_progress", "done")
 
 
+def _mention_to_json(mention: Mention) -> dict:
+    # Single-fragment (continuous) mentions keep the original {"start","end"}
+    # shape; only non-continuous mentions use the {"fragments": [...]} form.
+    if len(mention.fragments) == 1:
+        f = mention.fragments[0]
+        return {"start": f.start, "end": f.end}
+    return {"fragments": [{"start": f.start, "end": f.end} for f in mention.fragments]}
+
+
 def _entity_to_json(entity: Entity) -> dict:
-    return {
+    out = {
         "type": entity.type,
-        "mentions": [{"start": m.start, "end": m.end} for m in entity.mentions],
+        "mentions": [_mention_to_json(m) for m in entity.mentions],
     }
+    if entity.uid is not None:
+        out["uid"] = entity.uid
+    return out
 
 
 class Store:
@@ -133,18 +145,26 @@ class Store:
             mentions: List[Mention] = []
             seen = set()
             for m in entity.mentions:
-                start = max(0, min(m.start, n))
-                end = max(0, min(m.end, n))
-                if end <= start:
-                    self.warnings.append(f"{where}: dropped out-of-range mention [{m.start},{m.end}]")
+                fragments: List[Fragment] = []
+                for f in m.fragments:
+                    start = max(0, min(f.start, n))
+                    end = max(0, min(f.end, n))
+                    if end <= start:
+                        self.warnings.append(
+                            f"{where}: dropped out-of-range fragment [{f.start},{f.end}]"
+                        )
+                        continue
+                    fragments.append(Fragment(start=start, end=end))
+                if not fragments:
                     continue
-                key = (start, end)
+                fragments = merge_fragments(fragments)
+                key = tuple((f.start, f.end) for f in fragments)
                 if key in seen:
                     continue
                 seen.add(key)
-                mentions.append(Mention(start=start, end=end))
+                mentions.append(Mention(fragments=fragments))
             if mentions:
-                cleaned.append(Entity(type=entity.type, mentions=mentions))
+                cleaned.append(Entity(type=entity.type, mentions=mentions, uid=entity.uid))
         return cleaned
 
     # ------------------------------------------------------------------- read

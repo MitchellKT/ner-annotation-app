@@ -12,28 +12,34 @@ import type {
 } from "./types";
 import { toCodePoints } from "./lib/offsets";
 import { findOccurrences } from "./lib/matches";
+import { fragmentsKey, mergeFragments, toWireMention, wireFragments } from "./lib/mentions";
+import type { WireMention } from "./types";
 
 let _uid = 0;
 const uid = (prefix: string) => `${prefix}${++_uid}`;
 
 // ---- wire <-> client conversion ----------------------------------------
-function signature(type: string, mentions: { start: number; end: number }[]): string {
-  const spans = mentions.map((m) => `${m.start}:${m.end}`).sort().join(",");
-  return `${type}|${spans}`;
+function signature(e: { type: string; uid?: string; mentions: WireMention[] }): string {
+  const spans = e.mentions.map((m) => fragmentsKey(wireFragments(m))).sort().join(",");
+  return `${e.type}|${e.uid ?? ""}|${spans}`;
 }
 
 function toClientEntities(doc: DocData): Entity[] {
   // Entities that exactly match an original prediction are treated as
   // unconfirmed predictions (faded) until reviewed; everything else is "user".
-  const predSig = new Set(doc.prediction.map((e) => signature(e.type, e.mentions)));
+  const predSig = new Set(doc.prediction.map(signature));
   const allReviewed = doc.status === "done";
   return doc.entities.map((e) => {
-    const isPred = predSig.has(signature(e.type, e.mentions));
+    const isPred = predSig.has(signature(e));
     const origin: Origin = isPred ? "prediction" : "user";
     return {
       id: uid("e"),
       type: e.type,
-      mentions: e.mentions.map((m) => ({ id: uid("m"), start: m.start, end: m.end })),
+      mentions: e.mentions.map((m) => ({
+        id: uid("m"),
+        fragments: wireFragments(m).map((f) => ({ start: f.start, end: f.end })),
+      })),
+      uid: e.uid,
       reviewed: allReviewed || origin === "user",
       origin,
     };
@@ -45,7 +51,8 @@ function toWire(entities: Entity[]): WireEntity[] {
     .filter((e) => e.mentions.length > 0)
     .map((e) => ({
       type: e.type,
-      mentions: e.mentions.map((m) => ({ start: m.start, end: m.end })),
+      mentions: e.mentions.map((m) => toWireMention(m.fragments)),
+      ...(e.uid ? { uid: e.uid } : {}),
     }));
 }
 
@@ -53,12 +60,14 @@ function dedupeMentions(mentions: Mention[]): Mention[] {
   const seen = new Set<string>();
   const out: Mention[] = [];
   for (const m of mentions) {
-    const key = `${m.start}:${m.end}`;
+    const key = fragmentsKey(m.fragments);
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(m);
   }
-  return out.sort((a, b) => a.start - b.start || a.end - b.end);
+  return out.sort(
+    (a, b) => a.fragments[0].start - b.fragments[0].start || a.fragments[0].end - b.fragments[0].end
+  );
 }
 
 // ---- store ---------------------------------------------------------------
@@ -87,6 +96,7 @@ interface State {
   hoverEntityId: string | null;
   hoverMentionId: string | null;
   pendingMergeId: string | null; // first entity chosen for a merge
+  uidPromptEntityId: string | null; // entity whose unique-id prompt is open
   selectionSpan: { start: number; end: number } | null; // current normalized text selection
   scrollTo: { start: number; nonce: number } | null; // request TextPanel to scroll/flash a span
   snap: boolean;
@@ -117,14 +127,19 @@ interface State {
   cycleActive: (dir: 1 | -1) => void;
   beginMerge: (id: string) => void;
   cancelMerge: () => void;
+  openUidPrompt: (entityId: string) => void;
+  closeUidPrompt: () => void;
 
   // mutations
   createEntity: (type: string, span: { start: number; end: number }) => void;
   addMention: (entityId: string, span: { start: number; end: number }) => void;
+  addFragment: (entityId: string, mentionId: string, span: { start: number; end: number }) => void;
+  removeFragment: (entityId: string, mentionId: string, fragmentIndex: number) => void;
   newEmptyEntity: () => void;
   removeMention: (entityId: string, mentionId: string) => void;
   reassignMention: (mentionId: string, fromId: string, toId: string) => void;
   setEntityType: (entityId: string, type: string) => void;
+  setEntityUid: (entityId: string, uid: string | undefined) => void;
   deleteEntity: (entityId: string) => void;
   mergeEntities: (aId: string, bId: string) => void;
   splitMention: (entityId: string, mentionId: string) => void;
@@ -219,6 +234,7 @@ export const useStore = create<State>((set, get) => {
     hoverEntityId: null,
     hoverMentionId: null,
     pendingMergeId: null,
+    uidPromptEntityId: null,
     selectionSpan: null,
     scrollTo: null,
     snap: true,
@@ -260,6 +276,7 @@ export const useStore = create<State>((set, get) => {
           hoverEntityId: null,
           hoverMentionId: null,
           pendingMergeId: null,
+          uidPromptEntityId: null,
           selectionSpan: null,
           undoStack: [],
           redoStack: [],
@@ -310,21 +327,31 @@ export const useStore = create<State>((set, get) => {
     },
     beginMerge: (id) => set({ pendingMergeId: id }),
     cancelMerge: () => set({ pendingMergeId: null }),
+    openUidPrompt: (entityId) => set({ uidPromptEntityId: entityId }),
+    closeUidPrompt: () => set({ uidPromptEntityId: null }),
 
     createEntity(type, span) {
       const id = uid("e");
       const entity: Entity = {
         id,
         type,
-        mentions: dedupeMentions(expandSpan(span).map((sp) => ({ id: uid("m"), ...sp }))),
+        mentions: dedupeMentions(
+          expandSpan(span).map((sp) => ({ id: uid("m"), fragments: [{ start: sp.start, end: sp.end }] }))
+        ),
         reviewed: true,
         origin: "user",
       };
       mutate((entities) => [...entities, entity], { activeId: id });
+      // Prompt for the (optional) unique identifier right after creation;
+      // the user can dismiss it with Escape.
+      set({ uidPromptEntityId: id });
     },
 
     addMention(entityId, span) {
-      const added = expandSpan(span).map((sp) => ({ id: uid("m"), ...sp }));
+      const added = expandSpan(span).map((sp) => ({
+        id: uid("m"),
+        fragments: [{ start: sp.start, end: sp.end }],
+      }));
       mutate((entities) =>
         entities.map((e) =>
           e.id === entityId
@@ -332,6 +359,48 @@ export const useStore = create<State>((set, get) => {
             : e
         ),
         { activeId: entityId }
+      );
+    },
+
+    addFragment(entityId, mentionId, span) {
+      mutate((entities) =>
+        entities.map((e) =>
+          e.id === entityId
+            ? {
+                ...e,
+                mentions: dedupeMentions(
+                  e.mentions.map((m) =>
+                    m.id === mentionId
+                      ? { ...m, fragments: mergeFragments([...m.fragments, span]) }
+                      : m
+                  )
+                ),
+                reviewed: true,
+              }
+            : e
+        ),
+        { activeId: entityId }
+      );
+    },
+
+    removeFragment(entityId, mentionId, fragmentIndex) {
+      mutate((entities) =>
+        entities
+          .map((e) =>
+            e.id === entityId
+              ? {
+                  ...e,
+                  mentions: e.mentions
+                    .map((m) =>
+                      m.id === mentionId
+                        ? { ...m, fragments: m.fragments.filter((_, i) => i !== fragmentIndex) }
+                        : m
+                    )
+                    .filter((m) => m.fragments.length > 0),
+                }
+              : e
+          )
+          .filter((e) => e.mentions.length > 0)
       );
     },
 
@@ -345,6 +414,7 @@ export const useStore = create<State>((set, get) => {
         origin: "user",
       };
       mutate((entities) => [...entities, entity], { activeId: id });
+      set({ uidPromptEntityId: id });
     },
 
     removeMention(entityId, mentionId) {
@@ -376,6 +446,13 @@ export const useStore = create<State>((set, get) => {
 
     setEntityType(entityId, type) {
       mutate((entities) => entities.map((e) => (e.id === entityId ? { ...e, type, reviewed: true } : e)));
+    },
+
+    setEntityUid(entityId, entityUid) {
+      const trimmed = entityUid?.trim() || undefined;
+      mutate((entities) =>
+        entities.map((e) => (e.id === entityId ? { ...e, uid: trimmed, reviewed: true } : e))
+      );
     },
 
     deleteEntity(entityId) {
@@ -491,7 +568,10 @@ export const useStore = create<State>((set, get) => {
 });
 
 function cloneEntities(entities: Entity[]): Entity[] {
-  return entities.map((e) => ({ ...e, mentions: e.mentions.map((m) => ({ ...m })) }));
+  return entities.map((e) => ({
+    ...e,
+    mentions: e.mentions.map((m) => ({ ...m, fragments: m.fragments.map((f) => ({ ...f })) })),
+  }));
 }
 
 // Persist on tab close.
