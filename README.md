@@ -93,6 +93,14 @@ shows the live `1 PER · 2 LOC · …` legend so you always know which number is
 | `←` / `→` | Previous / next document |
 | `?` | Toggle the shortcut help |
 
+**Auto-annotate repeats.** With the *auto-annotate repeats* checkbox (text toolbar, on by
+default), annotating a mention also annotates every other identical occurrence of that text in
+the document — like walking Ctrl+F matches, but case-sensitive and in one keystroke. This applies
+both to creating an entity (digit keys) and to adding a mention to an existing entity (clicking
+its card). Auto-added mentions are ordinary mentions: remove any false positive with its chip's
+`×` (or hover + `Del`), and one `Ctrl+Z` undoes the whole batch. Untick the checkbox to go back
+to annotating only the selected span.
+
 To grow an existing entity, select the text then **click that entity's card** in the right panel
 (this is the only way to add a mention to an existing entity). The **active entity** (outlined in
 the right panel) is what the type/confirm/merge shortcuts act on; set it with `Tab`, by clicking a

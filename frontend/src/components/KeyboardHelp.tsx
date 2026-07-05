@@ -11,7 +11,7 @@ export function KeyboardHelp({ onClose }: { onClose: () => void }) {
     .join("  ");
 
   const rows: [string, string][] = [
-    ["1 – 9", `New entity from the selected text (${digitLegend || "by type"})`],
+    ["1 – 9", `New entity from the selected text (${digitLegend || "by type"}) — with “auto-annotate repeats” on, identical text elsewhere is annotated too`],
     ["1 – 9 (no selection)", "Change the active entity's type"],
     ["click entity (text selected)", "Add the selection to that entity (the only way to extend an entity)"],
     ["n", "New empty entity"],

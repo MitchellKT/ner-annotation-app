@@ -17,6 +17,8 @@ export default function App() {
   const warnings = useStore((s) => s.config?.warnings ?? []);
   const snap = useStore((s) => s.snap);
   const setSnap = useStore((s) => s.setSnap);
+  const autoMatch = useStore((s) => s.autoMatch);
+  const setAutoMatch = useStore((s) => s.setAutoMatch);
   const selectionSpan = useStore((s) => s.selectionSpan);
   const cps = useStore((s) => s.cps);
   const activeEntityId = useStore((s) => s.activeEntityId);
@@ -52,6 +54,14 @@ export default function App() {
             <label>
               <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} />
               snap to words
+            </label>
+            <label title="when you annotate a mention, automatically annotate every identical (case-sensitive, Ctrl+F style) occurrence in the document too — remove unwanted ones as usual">
+              <input
+                type="checkbox"
+                checked={autoMatch}
+                onChange={(e) => setAutoMatch(e.target.checked)}
+              />
+              auto-annotate repeats
             </label>
             <span className="type-legend" title="press a number to create an entity of that type from the selection">
               {types.slice(0, 9).map((t, i) => (
