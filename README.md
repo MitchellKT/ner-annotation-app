@@ -105,6 +105,14 @@ shows the live `1 PER · 2 LOC · …` legend so you always know which number is
 | `←` / `→` | Previous / next document |
 | `?` | Toggle the shortcut help |
 
+**Auto-annotate repeats.** With the *auto-annotate repeats* checkbox (text toolbar, on by
+default), annotating a mention also annotates every other identical occurrence of that text in
+the document — like walking Ctrl+F matches, but case-sensitive and in one keystroke. This applies
+both to creating an entity (digit keys) and to adding a mention to an existing entity (clicking
+its card). Auto-added mentions are ordinary mentions: remove any false positive with its chip's
+`×` (or hover + `Del`), and one `Ctrl+Z` undoes the whole batch. Untick the checkbox to go back
+to annotating only the selected span.
+
 **Unique identifiers.** Right after you create an entity, a small prompt asks for its optional
 unique identifier (e.g. `Q76`). Press `Enter` to save it or `Esc` to skip — it never blocks the
 flow. The id shows as a badge on the entity card; click the badge (or the card's `id` button)

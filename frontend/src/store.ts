@@ -11,6 +11,7 @@ import type {
   WireEntity,
 } from "./types";
 import { toCodePoints } from "./lib/offsets";
+import { findOccurrences } from "./lib/matches";
 import { fragmentsKey, mergeFragments, toWireMention, wireFragments } from "./lib/mentions";
 import type { WireMention } from "./types";
 
@@ -99,6 +100,7 @@ interface State {
   selectionSpan: { start: number; end: number } | null; // current normalized text selection
   scrollTo: { start: number; nonce: number } | null; // request TextPanel to scroll/flash a span
   snap: boolean;
+  autoMatch: boolean; // propagate a new mention to identical text elsewhere
   saveState: SaveState;
 
   undoStack: Snapshot[];
@@ -118,6 +120,7 @@ interface State {
   setSelectionSpan: (span: { start: number; end: number } | null) => void;
   requestScrollTo: (start: number) => void;
   setSnap: (v: boolean) => void;
+  setAutoMatch: (v: boolean) => void;
   setHoverEntity: (id: string | null) => void;
   setHoverMention: (id: string | null) => void;
   setActiveEntity: (id: string | null) => void;
@@ -176,6 +179,16 @@ export const useStore = create<State>((set, get) => {
     scheduleSave();
   }
 
+  /**
+   * The spans a user-annotated span stands for: itself, plus — when
+   * "auto-annotate repeats" is on — every other identical (Ctrl+F style,
+   * case-sensitive) occurrence in the document.
+   */
+  function expandSpan(span: { start: number; end: number }): { start: number; end: number }[] {
+    const s = get();
+    return s.autoMatch ? [span, ...findOccurrences(s.cps, span)] : [span];
+  }
+
   function scheduleSave() {
     if (saveTimer) clearTimeout(saveTimer);
     set({ saveState: "saving" });
@@ -225,6 +238,7 @@ export const useStore = create<State>((set, get) => {
     selectionSpan: null,
     scrollTo: null,
     snap: true,
+    autoMatch: true,
     saveState: "idle",
 
     undoStack: [],
@@ -300,6 +314,7 @@ export const useStore = create<State>((set, get) => {
     setSelectionSpan: (span) => set({ selectionSpan: span }),
     requestScrollTo: (start) => set({ scrollTo: { start, nonce: Date.now() } }),
     setSnap: (v) => set({ snap: v }),
+    setAutoMatch: (v) => set({ autoMatch: v }),
     setHoverEntity: (id) => set({ hoverEntityId: id }),
     setHoverMention: (id) => set({ hoverMentionId: id }),
     setActiveEntity: (id) => set({ activeEntityId: id }),
@@ -320,7 +335,9 @@ export const useStore = create<State>((set, get) => {
       const entity: Entity = {
         id,
         type,
-        mentions: [{ id: uid("m"), fragments: [{ start: span.start, end: span.end }] }],
+        mentions: dedupeMentions(
+          expandSpan(span).map((sp) => ({ id: uid("m"), fragments: [{ start: sp.start, end: sp.end }] }))
+        ),
         reviewed: true,
         origin: "user",
       };
@@ -331,17 +348,14 @@ export const useStore = create<State>((set, get) => {
     },
 
     addMention(entityId, span) {
+      const added = expandSpan(span).map((sp) => ({
+        id: uid("m"),
+        fragments: [{ start: sp.start, end: sp.end }],
+      }));
       mutate((entities) =>
         entities.map((e) =>
           e.id === entityId
-            ? {
-                ...e,
-                mentions: dedupeMentions([
-                  ...e.mentions,
-                  { id: uid("m"), fragments: [{ start: span.start, end: span.end }] },
-                ]),
-                reviewed: true,
-              }
+            ? { ...e, mentions: dedupeMentions([...e.mentions, ...added]), reviewed: true }
             : e
         ),
         { activeId: entityId }
