@@ -115,6 +115,46 @@ def test_config_defaults_and_custom_types(tmp_path):
     assert custom.types == ["PER", "LOC", "ORG", "MISC", "EVENT"]
 
 
+def test_discontinuous_mentions_round_trip(tmp_path):
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    text = "Annie and George Washington visited."
+    write_jsonl(inp, [{"doc_id": "d1", "text": text, "entities": [
+        # "Annie … Washington" as one non-continuous mention.
+        {"type": "PER", "mentions": [{"fragments": [{"start": 0, "end": 5}, {"start": 17, "end": 27}]}]},
+        {"type": "PER", "mentions": [{"start": 10, "end": 27}]},
+    ]}])
+    store = Store(inp, out)
+    d1 = store.get_doc("d1")
+    assert d1["entities"][0]["mentions"][0] == {
+        "fragments": [{"start": 0, "end": 5}, {"start": 17, "end": 27}]
+    }
+    # Continuous mentions keep the plain {start,end} shape.
+    assert d1["entities"][1]["mentions"][0] == {"start": 10, "end": 27}
+
+    store.save_doc("d1", d1["entities"], status="done")
+    rec = json.loads(out.read_text(encoding="utf-8").strip().splitlines()[0])
+    assert rec["entities"] == d1["entities"]
+    # Resume parses the fragments form back.
+    assert Store(inp, out).get_doc("d1")["entities"] == d1["entities"]
+
+
+def test_fragments_are_sorted_merged_and_clamped(tmp_path):
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [{"doc_id": "d1", "text": "hello world", "entities": [
+        # out of order + overlapping -> merged into one continuous fragment
+        {"type": "PER", "mentions": [{"fragments": [[3, 5], [0, 4]]}]},
+        # second fragment fully out of range -> dropped, mention becomes continuous
+        {"type": "LOC", "mentions": [{"fragments": [{"start": 6, "end": 11}, {"start": 50, "end": 60}]}]},
+    ]}])
+    store = Store(inp, out)
+    ents = store.get_doc("d1")["entities"]
+    assert ents[0]["mentions"][0] == {"start": 0, "end": 5}
+    assert ents[1]["mentions"][0] == {"start": 6, "end": 11}
+    assert any("dropped out-of-range fragment" in w for w in store.warnings)
+
+
 def test_mention_rejects_bad_order():
     with pytest.raises(Exception):
         Mention.model_validate({"start": 5, "end": 5})
