@@ -25,7 +25,9 @@ export function UidPrompt() {
   if (!entity) return null;
 
   const firstMention = entity.mentions[0];
-  const surface = firstMention ? cpSlice(cps, firstMention.start, firstMention.end) : "";
+  const surface = firstMention
+    ? firstMention.fragments.map((f) => cpSlice(cps, f.start, f.end)).join(" ‥ ")
+    : "";
 
   function save() {
     setEntityUid(entity!.id, value);

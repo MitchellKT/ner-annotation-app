@@ -28,6 +28,12 @@ Input and output are the same `.jsonl` schema, one record per line:
 - An entity may carry an optional **`"uid"`** — a free-form unique identifier (e.g. a Wikidata QID
   or knowledge-base key): `{"type": "PER", "uid": "Q76", "mentions": [...]}`. It is omitted from
   the output when unset, so files without ids keep the original schema.
+- A mention may be **non-continuous**: a single mention made of several disjoint *fragments*,
+  written as `{"fragments": [{"start": ..., "end": ...}, ...]}` in place of `{"start", "end"}`.
+  E.g. in *"Annie and George Washington"*, the mention "Annie Washington" is
+  `{"fragments": [{"start": 0, "end": 5}, {"start": 17, "end": 27}]}`. Fragments are kept sorted
+  and non-overlapping (touching fragments are merged). Continuous mentions are always written back
+  in the plain `{"start", "end"}` shape, so files without non-continuous mentions keep the original schema.
 
 The output file is written continuously as you annotate. Per-document review status is kept in a
 sidecar `<output>.jsonl.state.json` so the output stays exactly on-schema.
@@ -83,6 +89,8 @@ shows the live `1 PER · 2 LOC · …` legend so you always know which number is
 | `1`…`N` (nothing selected) | Change the active entity's type to that type |
 | click an entity (text selected) | Add the selection to that entity — the only way to extend an existing entity |
 | `Enter` / `Esc` (id prompt) | Save / skip the optional unique identifier asked after creating an entity |
+| `x` (text selected) | Extend a mention with the selection as an extra **fragment** (non-continuous mention): targets the hovered mention, else the active entity's last mention |
+| click a mention chip (text selected) | Add the selection as a fragment of that mention |
 | `n` | New empty entity |
 | `Tab` / `Shift+Tab` | Cycle the active entity |
 | `Del` / `Backspace` | Delete the hovered mention |
@@ -101,6 +109,14 @@ shows the live `1 PER · 2 LOC · …` legend so you always know which number is
 unique identifier (e.g. `Q76`). Press `Enter` to save it or `Esc` to skip — it never blocks the
 flow. The id shows as a badge on the entity card; click the badge (or the card's `id` button)
 to add or edit it later. Ids are saved as the entity's `"uid"` field in the output.
+
+**Non-continuous mentions.** To annotate e.g. "Annie Washington" in *"Annie and George
+Washington"*: select "Annie", press its type digit (a new entity + mention), then select
+"Washington" and press `x` — the two spans become **one mention**, shown in the chip as
+`Annie ‥ Washington` and underlined in the text as two linked spans. `x` extends the hovered
+mention if you're pointing at a chip, otherwise the active entity's most recent mention; with
+a selection you can also click any mention chip directly. In a multi-fragment chip each
+fragment has its own `×` to detach just that fragment.
 
 To grow an existing entity, select the text then **click that entity's card** in the right panel
 (this is the only way to add a mention to an existing entity). The **active entity** (outlined in

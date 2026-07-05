@@ -3,6 +3,7 @@ import { useStore } from "../store";
 import { colorForIndex, colorForType } from "../colors";
 import type { Entity } from "../types";
 import { MentionChip } from "./MentionChip";
+import { fragmentsKey } from "../lib/mentions";
 
 interface Props {
   entity: Entity;
@@ -156,7 +157,7 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
             key={m.id}
             entityId={entity.id}
             mention={m}
-            added={!predictionSpans.has(`${m.start}:${m.end}`)}
+            added={!predictionSpans.has(fragmentsKey(m.fragments))}
           />
         ))}
       </div>
