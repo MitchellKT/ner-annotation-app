@@ -29,7 +29,9 @@ export function TextPanel() {
     const spans: SpanInput[] = [];
     for (const e of entities) {
       for (const mn of e.mentions) {
-        spans.push({ entityId: e.id, mentionId: mn.id, start: mn.start, end: mn.end });
+        for (const f of mn.fragments) {
+          spans.push({ entityId: e.id, mentionId: mn.id, start: f.start, end: f.end });
+        }
       }
     }
     return computeSegments(cps.length, spans);
