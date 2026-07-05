@@ -16,8 +16,6 @@ export default function App() {
   const error = useStore((s) => s.error);
   const docId = useStore((s) => s.docId);
   const warnings = useStore((s) => s.config?.warnings ?? []);
-  const snap = useStore((s) => s.snap);
-  const setSnap = useStore((s) => s.setSnap);
   const autoMatch = useStore((s) => s.autoMatch);
   const setAutoMatch = useStore((s) => s.setAutoMatch);
   const selectionSpan = useStore((s) => s.selectionSpan);
@@ -54,10 +52,6 @@ export default function App() {
 
         <div className="col-text">
           <div className="text-toolbar">
-            <label>
-              <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} />
-              snap to words
-            </label>
             <label title="when you annotate a mention, automatically annotate every identical (case-sensitive, Ctrl+F style) occurrence in the document too — remove unwanted ones as usual">
               <input
                 type="checkbox"

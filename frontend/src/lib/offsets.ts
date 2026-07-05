@@ -12,12 +12,8 @@ export function cpSlice(cps: string[], start: number, end: number): string {
   return cps.slice(start, end).join("");
 }
 
-const WORD_RE = /[\p{L}\p{N}_]/u;
 const SPACE_RE = /\s/u;
 
-function isWord(cp: string | undefined): boolean {
-  return cp !== undefined && WORD_RE.test(cp);
-}
 function isSpace(cp: string | undefined): boolean {
   return cp !== undefined && SPACE_RE.test(cp);
 }
@@ -28,17 +24,10 @@ export interface Span {
 }
 
 /**
- * Clean up a raw selection: clamp, order, trim surrounding whitespace, and
- * (optionally) snap boundaries outward to whole-word edges. Snapping only grows
- * across a boundary that sits *inside* a word — it never swallows whitespace.
+ * Clean up a raw selection: clamp, order, and trim surrounding whitespace.
  * Returns null for an empty/whitespace-only selection.
  */
-export function normalizeSelection(
-  cps: string[],
-  rawStart: number,
-  rawEnd: number,
-  snap: boolean
-): Span | null {
+export function normalizeSelection(cps: string[], rawStart: number, rawEnd: number): Span | null {
   const n = cps.length;
   let start = clamp(Math.min(rawStart, rawEnd), 0, n);
   let end = clamp(Math.max(rawStart, rawEnd), 0, n);
@@ -47,10 +36,6 @@ export function normalizeSelection(
   while (end > start && isSpace(cps[end - 1])) end--;
   if (start >= end) return null;
 
-  if (snap) {
-    while (start > 0 && isWord(cps[start - 1]) && isWord(cps[start])) start--;
-    while (end < n && isWord(cps[end]) && isWord(cps[end - 1])) end++;
-  }
   return { start, end };
 }
 
