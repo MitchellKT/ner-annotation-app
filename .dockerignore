@@ -1,0 +1,15 @@
+.git
+node_modules
+frontend/dist
+dist
+backend/.venv
+.venv
+venv
+__pycache__
+*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.egg-info
+*.state.json
+sample/annotations*.jsonl
