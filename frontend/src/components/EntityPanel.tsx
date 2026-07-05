@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { useStore } from "../store";
 import { EntityCard } from "./EntityCard";
+import { fragmentsKey, wireFragments } from "../lib/mentions";
 
 export function EntityPanel() {
   const entities = useStore((s) => s.entities);
@@ -17,7 +18,7 @@ export function EntityPanel() {
 
   const predictionSpans = useMemo(() => {
     const s = new Set<string>();
-    for (const e of prediction) for (const m of e.mentions) s.add(`${m.start}:${m.end}`);
+    for (const e of prediction) for (const m of e.mentions) s.add(fragmentsKey(wireFragments(m)));
     return s;
   }, [prediction]);
 

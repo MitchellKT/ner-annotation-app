@@ -132,6 +132,7 @@ kbd {
 .chip .x { color: var(--muted); cursor: pointer; font-weight: 700; }
 .chip .x:hover { color: var(--danger); }
 .chip .added { color: var(--ok); font-weight: 700; }
+.chip .frag-gap { color: var(--muted); font-weight: 700; letter-spacing: 1px; }
 
 .type-menu { display: flex; gap: 4px; }
 .type-menu button { padding: 2px 8px; font-size: 11px; font-weight: 700; }
@@ -141,6 +142,29 @@ kbd {
 .help-card { background: var(--panel); border-radius: 12px; padding: 22px 26px; max-width: 640px; width: 90%; max-height: 84vh; overflow-y: auto; box-shadow: 0 20px 60px rgba(0,0,0,0.3); }
 .help-card h2 { margin-top: 0; }
 .help-grid { display: grid; grid-template-columns: auto 1fr; gap: 8px 16px; align-items: center; }
+
+/* ---- entity unique-id prompt ---- */
+.uid-overlay { background: rgba(16,24,40,0.25); }
+.uid-card {
+  background: var(--panel); border-radius: 12px; padding: 18px 20px; width: 420px; max-width: 92%;
+  box-shadow: 0 20px 60px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 10px;
+}
+.uid-head { display: flex; align-items: center; gap: 8px; font-size: 13px; min-width: 0; }
+.uid-head strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.uid-label { font-size: 12px; font-weight: 600; }
+.uid-input {
+  font: inherit; font-size: 13px; padding: 7px 9px; border-radius: 7px;
+  border: 1px solid var(--border-strong); outline: none; width: 100%; box-sizing: border-box;
+}
+.uid-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37,99,235,0.18); }
+.uid-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.uid-badge {
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 11px; padding: 1px 6px; border-radius: 5px; cursor: pointer;
+  background: #eef2f7; border: 1px solid var(--border-strong); color: var(--text);
+  max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.uid-badge:hover { border-color: var(--accent); }
 .help-grid .k { text-align: right; }
 .help-section { margin-top: 16px; font-weight: 700; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
 

@@ -6,6 +6,7 @@ import { DocNavigator } from "./components/DocNavigator";
 import { TextPanel } from "./components/TextPanel";
 import { EntityPanel } from "./components/EntityPanel";
 import { KeyboardHelp } from "./components/KeyboardHelp";
+import { UidPrompt } from "./components/UidPrompt";
 import { cpSlice } from "./lib/offsets";
 import { colorForType } from "./colors";
 
@@ -15,13 +16,15 @@ export default function App() {
   const error = useStore((s) => s.error);
   const docId = useStore((s) => s.docId);
   const warnings = useStore((s) => s.config?.warnings ?? []);
-  const snap = useStore((s) => s.snap);
-  const setSnap = useStore((s) => s.setSnap);
+  const autoMatch = useStore((s) => s.autoMatch);
+  const setAutoMatch = useStore((s) => s.setAutoMatch);
   const selectionSpan = useStore((s) => s.selectionSpan);
   const cps = useStore((s) => s.cps);
   const activeEntityId = useStore((s) => s.activeEntityId);
   const entities = useStore((s) => s.entities);
   const types = useStore((s) => s.config?.types ?? ["PER", "LOC", "ORG", "TIME"]);
+
+  const uidPromptEntityId = useStore((s) => s.uidPromptEntityId);
 
   const [showHelp, setShowHelp] = useState(false);
   useKeyboard(() => setShowHelp((v) => !v));
@@ -49,9 +52,13 @@ export default function App() {
 
         <div className="col-text">
           <div className="text-toolbar">
-            <label>
-              <input type="checkbox" checked={snap} onChange={(e) => setSnap(e.target.checked)} />
-              snap to words
+            <label title="when you annotate a mention, automatically annotate every identical (case-sensitive, Ctrl+F style) occurrence in the document too — remove unwanted ones as usual">
+              <input
+                type="checkbox"
+                checked={autoMatch}
+                onChange={(e) => setAutoMatch(e.target.checked)}
+              />
+              auto-annotate repeats
             </label>
             <span className="type-legend" title="press a number to create an entity of that type from the selection">
               {types.slice(0, 9).map((t, i) => (
@@ -81,6 +88,8 @@ export default function App() {
         </div>
       </div>
 
+      {/* keyed so the input state resets when the prompt targets a new entity */}
+      {uidPromptEntityId && <UidPrompt key={uidPromptEntityId} />}
       {showHelp && <KeyboardHelp onClose={() => setShowHelp(false)} />}
     </div>
   );

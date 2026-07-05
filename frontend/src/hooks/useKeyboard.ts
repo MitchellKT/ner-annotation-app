@@ -75,6 +75,24 @@ export function useKeyboard(toggleHelp: () => void) {
             else s.beginMerge(s.activeEntityId);
           }
           return;
+        case "x": {
+          // Extend: attach the selection as an extra fragment of a mention,
+          // making it non-continuous. Targets the hovered mention if any,
+          // else the active entity's last mention.
+          if (!span) return;
+          const target = s.hoverMentionId
+            ? s.entities.find((en) => en.mentions.some((m) => m.id === s.hoverMentionId))
+            : s.entities.find((en) => en.id === s.activeEntityId);
+          if (!target || target.mentions.length === 0) return;
+          const mention = s.hoverMentionId
+            ? target.mentions.find((m) => m.id === s.hoverMentionId)!
+            : target.mentions[target.mentions.length - 1];
+          e.preventDefault();
+          s.addFragment(target.id, mention.id, span);
+          s.setSelectionSpan(null);
+          clearNativeSelection();
+          return;
+        }
         case "s": {
           if (s.hoverMentionId) {
             const owner = s.entities.find((en) => en.mentions.some((m) => m.id === s.hoverMentionId));

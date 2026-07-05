@@ -10,7 +10,6 @@ export function TextPanel() {
   const activeEntityId = useStore((s) => s.activeEntityId);
   const hoverEntityId = useStore((s) => s.hoverEntityId);
   const hoverMentionId = useStore((s) => s.hoverMentionId);
-  const snap = useStore((s) => s.snap);
   const scrollTo = useStore((s) => s.scrollTo);
   const setSelectionSpan = useStore((s) => s.setSelectionSpan);
   const setActiveEntity = useStore((s) => s.setActiveEntity);
@@ -29,7 +28,9 @@ export function TextPanel() {
     const spans: SpanInput[] = [];
     for (const e of entities) {
       for (const mn of e.mentions) {
-        spans.push({ entityId: e.id, mentionId: mn.id, start: mn.start, end: mn.end });
+        for (const f of mn.fragments) {
+          spans.push({ entityId: e.id, mentionId: mn.id, start: f.start, end: f.end });
+        }
       }
     }
     return computeSegments(cps.length, spans);
@@ -54,7 +55,7 @@ export function TextPanel() {
       setSelectionSpan(null);
       return;
     }
-    const span = normalizeSelection(cps, raw.start, raw.end, snap);
+    const span = normalizeSelection(cps, raw.start, raw.end);
     setSelectionSpan(span);
   }
 
