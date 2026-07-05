@@ -99,7 +99,6 @@ interface State {
   uidPromptEntityId: string | null; // entity whose unique-id prompt is open
   selectionSpan: { start: number; end: number } | null; // current normalized text selection
   scrollTo: { start: number; nonce: number } | null; // request TextPanel to scroll/flash a span
-  snap: boolean;
   autoMatch: boolean; // propagate a new mention to identical text elsewhere
   saveState: SaveState;
 
@@ -119,7 +118,6 @@ interface State {
   // settings / transient ui
   setSelectionSpan: (span: { start: number; end: number } | null) => void;
   requestScrollTo: (start: number) => void;
-  setSnap: (v: boolean) => void;
   setAutoMatch: (v: boolean) => void;
   setHoverEntity: (id: string | null) => void;
   setHoverMention: (id: string | null) => void;
@@ -237,7 +235,6 @@ export const useStore = create<State>((set, get) => {
     uidPromptEntityId: null,
     selectionSpan: null,
     scrollTo: null,
-    snap: true,
     autoMatch: true,
     saveState: "idle",
 
@@ -313,7 +310,6 @@ export const useStore = create<State>((set, get) => {
 
     setSelectionSpan: (span) => set({ selectionSpan: span }),
     requestScrollTo: (start) => set({ scrollTo: { start, nonce: Date.now() } }),
-    setSnap: (v) => set({ snap: v }),
     setAutoMatch: (v) => set({ autoMatch: v }),
     setHoverEntity: (id) => set({ hoverEntityId: id }),
     setHoverMention: (id) => set({ hoverMentionId: id }),
