@@ -25,6 +25,9 @@ Input and output are the same `.jsonl` schema, one record per line:
 - `end` is **exclusive** (`text[start:end]`); offsets are **Unicode code points** (matching Python `str`).
 - `entities` is optional on input (a prediction to refine). Mentions may also be given as `[start, end]` pairs.
 - Mentions may **overlap / nest** (e.g. `LOC` "America" inside `ORG` "Bank of America").
+- An entity may carry an optional **`"uid"`** — a free-form unique identifier (e.g. a Wikidata QID
+  or knowledge-base key): `{"type": "PER", "uid": "Q76", "mentions": [...]}`. It is omitted from
+  the output when unset, so files without ids keep the original schema.
 - A mention may be **non-continuous**: a single mention made of several disjoint *fragments*,
   written as `{"fragments": [{"start": ..., "end": ...}, ...]}` in place of `{"start", "end"}`.
   E.g. in *"Annie and George Washington"*, the mention "Annie Washington" is
@@ -85,6 +88,7 @@ shows the live `1 PER · 2 LOC · …` legend so you always know which number is
 | `1`…`N` | New entity of that type (the Nth configured type) from the selected text |
 | `1`…`N` (nothing selected) | Change the active entity's type to that type |
 | click an entity (text selected) | Add the selection to that entity — the only way to extend an existing entity |
+| `Enter` / `Esc` (id prompt) | Save / skip the optional unique identifier asked after creating an entity |
 | `x` (text selected) | Extend a mention with the selection as an extra **fragment** (non-continuous mention): targets the hovered mention, else the active entity's last mention |
 | click a mention chip (text selected) | Add the selection as a fragment of that mention |
 | `n` | New empty entity |
@@ -100,6 +104,11 @@ shows the live `1 PER · 2 LOC · …` legend so you always know which number is
 | `d` | Mark document done & jump to next unreviewed |
 | `←` / `→` | Previous / next document |
 | `?` | Toggle the shortcut help |
+
+**Unique identifiers.** Right after you create an entity, a small prompt asks for its optional
+unique identifier (e.g. `Q76`). Press `Enter` to save it or `Esc` to skip — it never blocks the
+flow. The id shows as a badge on the entity card; click the badge (or the card's `id` button)
+to add or edit it later. Ids are saved as the entity's `"uid"` field in the output.
 
 **Non-continuous mentions.** To annotate e.g. "Annie Washington" in *"Annie and George
 Washington"*: select "Annie", press its type digit (a new entity + mention), then select
