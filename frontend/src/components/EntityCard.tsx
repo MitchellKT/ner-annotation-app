@@ -22,6 +22,7 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
   const cancelMerge = useStore((s) => s.cancelMerge);
   const mergeEntities = useStore((s) => s.mergeEntities);
   const reassignMention = useStore((s) => s.reassignMention);
+  const openUidPrompt = useStore((s) => s.openUidPrompt);
   const setHoverEntity = useStore((s) => s.setHoverEntity);
   const selectionSpan = useStore((s) => s.selectionSpan);
   const addMention = useStore((s) => s.addMention);
@@ -104,10 +105,27 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
             </option>
           ))}
         </select>
+        {entity.uid && (
+          <span
+            className="uid-badge"
+            title={`unique id: ${entity.uid} — click to edit`}
+            onClick={(e) => {
+              e.stopPropagation();
+              openUidPrompt(entity.id);
+            }}
+          >
+            {entity.uid}
+          </span>
+        )}
         <span className="ncount" style={{ fontSize: 11, color: "var(--muted)" }}>
           {entity.mentions.length}×
         </span>
         <div className="ecard-actions" onClick={(e) => e.stopPropagation()}>
+          {!entity.uid && (
+            <button className="icon-btn" title="set unique identifier" onClick={() => openUidPrompt(entity.id)}>
+              id
+            </button>
+          )}
           <button
             className={"icon-btn" + (entity.reviewed ? " on" : "")}
             title="confirm / unconfirm (r)"

@@ -115,6 +115,36 @@ def test_config_defaults_and_custom_types(tmp_path):
     assert custom.types == ["PER", "LOC", "ORG", "MISC", "EVENT"]
 
 
+def test_entity_uid_round_trip(tmp_path):
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [{"doc_id": "d1", "text": "Alice met Bob.", "entities": [
+        {"type": "PER", "mentions": [{"start": 0, "end": 5}], "uid": "Q123"},
+    ]}])
+    store = Store(inp, out)
+    assert store.get_doc("d1")["entities"][0]["uid"] == "Q123"
+
+    # Save one entity with a uid and one without; only the former serializes it.
+    store.save_doc("d1", [
+        {"type": "PER", "mentions": [{"start": 0, "end": 5}], "uid": "Q42"},
+        {"type": "PER", "mentions": [{"start": 10, "end": 13}]},
+    ], status="done")
+    rec = json.loads(out.read_text(encoding="utf-8").strip().splitlines()[0])
+    assert rec["entities"][0]["uid"] == "Q42"
+    assert "uid" not in rec["entities"][1]
+
+    # Blank / whitespace uid is treated as unset.
+    store.save_doc("d1", [{"type": "PER", "mentions": [{"start": 0, "end": 5}], "uid": "  "}],
+                   status="done")
+    rec = json.loads(out.read_text(encoding="utf-8").strip().splitlines()[0])
+    assert "uid" not in rec["entities"][0]
+
+    # Resume keeps the uid.
+    store.save_doc("d1", [{"type": "PER", "mentions": [{"start": 0, "end": 5}], "uid": "Q42"}],
+                   status="done")
+    assert Store(inp, out).get_doc("d1")["entities"][0]["uid"] == "Q42"
+
+
 def test_mention_rejects_bad_order():
     with pytest.raises(Exception):
         Mention.model_validate({"start": 5, "end": 5})

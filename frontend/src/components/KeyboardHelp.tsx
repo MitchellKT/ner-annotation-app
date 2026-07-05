@@ -14,6 +14,7 @@ export function KeyboardHelp({ onClose }: { onClose: () => void }) {
     ["1 – 9", `New entity from the selected text (${digitLegend || "by type"})`],
     ["1 – 9 (no selection)", "Change the active entity's type"],
     ["click entity (text selected)", "Add the selection to that entity (the only way to extend an entity)"],
+    ["Enter / Esc (id prompt)", "Save / skip the optional unique identifier asked after creating an entity"],
     ["n", "New empty entity"],
     ["Tab / Shift+Tab", "Cycle the active entity"],
     ["click highlight", "Make that entity active"],

@@ -14,7 +14,7 @@ flags anything outside the canonical set).
 
 from __future__ import annotations
 
-from typing import Any, List
+from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 
@@ -53,11 +53,22 @@ class Entity(BaseModel):
 
     type: str
     mentions: List[Mention]
+    # Optional external unique identifier for the entity (e.g. a Wikidata QID
+    # or knowledge-base key). Omitted from the output when not set.
+    uid: Optional[str] = None
 
     @field_validator("type", mode="before")
     @classmethod
     def _stringify_type(cls, value: Any) -> Any:
         return str(value) if value is not None else value
+
+    @field_validator("uid", mode="before")
+    @classmethod
+    def _normalize_uid(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        value = str(value).strip()
+        return value or None
 
 
 class Doc(BaseModel):

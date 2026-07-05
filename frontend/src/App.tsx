@@ -6,6 +6,7 @@ import { DocNavigator } from "./components/DocNavigator";
 import { TextPanel } from "./components/TextPanel";
 import { EntityPanel } from "./components/EntityPanel";
 import { KeyboardHelp } from "./components/KeyboardHelp";
+import { UidPrompt } from "./components/UidPrompt";
 import { cpSlice } from "./lib/offsets";
 import { colorForType } from "./colors";
 
@@ -22,6 +23,8 @@ export default function App() {
   const activeEntityId = useStore((s) => s.activeEntityId);
   const entities = useStore((s) => s.entities);
   const types = useStore((s) => s.config?.types ?? ["PER", "LOC", "ORG", "TIME"]);
+
+  const uidPromptEntityId = useStore((s) => s.uidPromptEntityId);
 
   const [showHelp, setShowHelp] = useState(false);
   useKeyboard(() => setShowHelp((v) => !v));
@@ -81,6 +84,8 @@ export default function App() {
         </div>
       </div>
 
+      {/* keyed so the input state resets when the prompt targets a new entity */}
+      {uidPromptEntityId && <UidPrompt key={uidPromptEntityId} />}
       {showHelp && <KeyboardHelp onClose={() => setShowHelp(false)} />}
     </div>
   );

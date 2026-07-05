@@ -29,10 +29,13 @@ VALID_STATUSES = ("unreviewed", "in_progress", "done")
 
 
 def _entity_to_json(entity: Entity) -> dict:
-    return {
+    out = {
         "type": entity.type,
         "mentions": [{"start": m.start, "end": m.end} for m in entity.mentions],
     }
+    if entity.uid is not None:
+        out["uid"] = entity.uid
+    return out
 
 
 class Store:
@@ -144,7 +147,7 @@ class Store:
                 seen.add(key)
                 mentions.append(Mention(start=start, end=end))
             if mentions:
-                cleaned.append(Entity(type=entity.type, mentions=mentions))
+                cleaned.append(Entity(type=entity.type, mentions=mentions, uid=entity.uid))
         return cleaned
 
     # ------------------------------------------------------------------- read
