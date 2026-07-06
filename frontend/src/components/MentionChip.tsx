@@ -48,7 +48,11 @@ export function MentionChip({ entityId, mention, added }: Props) {
           JSON.stringify({ kind: "mention", mentionId: mention.id, fromId: entityId })
         );
         e.dataTransfer.effectAllowed = "move";
-        setDraggingMention({ mentionId: mention.id, fromId: entityId });
+        // Defer showing the split drop-zone: mutating the DOM synchronously
+        // inside dragstart (the drop-zone insertion reflows this chip's card)
+        // aborts the drag in Chromium. Let the drag start first, then re-render.
+        const payload = { mentionId: mention.id, fromId: entityId };
+        setTimeout(() => setDraggingMention(payload), 0);
       }}
       onDragEnd={() => setDraggingMention(null)}
       onClick={onChipClick}
@@ -56,7 +60,7 @@ export function MentionChip({ entityId, mention, added }: Props) {
       onMouseLeave={() => setHoverMention(null)}
       title={
         mention.fragments.map((f) => `[${f.start}, ${f.end})`).join(" + ") +
-        " — click to locate (with text selected: add as fragment), drag onto another entity to reassign, drag onto empty space to split into a new entity"
+        " — click to locate (with text selected: add as fragment), drag onto another entity to reassign, drag out (onto empty space or off its own card) to split into a new entity"
       }
     >
       {added && <span className="added" title="added vs. prediction">+</span>}

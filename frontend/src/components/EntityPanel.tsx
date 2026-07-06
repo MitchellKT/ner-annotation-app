@@ -22,9 +22,19 @@ export function EntityPanel() {
     if (!raw) return;
     const data = JSON.parse(raw);
     // A mention dropped anywhere that isn't another entity card (which stops
-    // propagation itself) — pull it out into a brand-new entity.
-    if (data.kind === "mention") splitMention(data.fromId, data.mentionId);
+    // propagation itself) — pull it out into a brand-new entity. A lone mention
+    // has nothing to split from, so ignore it.
+    if (data.kind === "mention") {
+      const src = entities.find((en) => en.id === data.fromId);
+      if (src && src.mentions.length > 1) splitMention(data.fromId, data.mentionId);
+    }
   }
+
+  // Splitting only makes sense when the dragged mention's entity has siblings;
+  // otherwise the "drop to split" hint would recreate the same entity.
+  const canSplitDragged =
+    !!draggingMention &&
+    (entities.find((en) => en.id === draggingMention.fromId)?.mentions.length ?? 0) > 1;
 
   // Digit keys 1-9 create an entity of the matching type; cap the hint at the
   // number of configured types (and at 9, the highest reachable digit).
@@ -58,7 +68,7 @@ export function EntityPanel() {
       </div>
 
       <div className="entity-list" onDragOver={(e) => e.preventDefault()} onDrop={onListDrop}>
-        {draggingMention && (
+        {canSplitDragged && (
           <div className="split-dropzone">Drop here to split into a new entity</div>
         )}
         {entities.length === 0 && (

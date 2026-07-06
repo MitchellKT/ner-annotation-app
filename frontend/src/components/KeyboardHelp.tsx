@@ -26,7 +26,7 @@ export function KeyboardHelp({ onClose }: { onClose: () => void }) {
     ["m", "Merge: press m, then click another entity (or drag card onto card)"],
     ["s", "Split the hovered mention into its own entity"],
     ["drag chip → card", "Reassign a mention to another entity"],
-    ["drag chip → empty space", "Split that mention out into a new entity"],
+    ["drag chip out", "Split that mention into a new entity (drop on empty space or back on its own card)"],
     ["Esc", "Cancel a pending merge / clear selection"],
     ["Ctrl+Z / Ctrl+Shift+Z", "Undo / redo"],
     ["d", "Mark document done & go to next unreviewed"],
