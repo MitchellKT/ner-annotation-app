@@ -95,8 +95,13 @@ export function TextPanel() {
             })
             .join(", ");
 
-          const isHover =
-            seg.entityIds.includes(hoverEntityId ?? "") || seg.mentionIds.includes(hoverMentionId ?? "");
+          // A specific mention hover (hovering its chip) narrows the highlight to
+          // just that mention, even though the chip sits inside its entity card —
+          // mouseenter doesn't re-fire on the card when moving onto a child, so
+          // hoverEntityId is still set and would otherwise light up every mention.
+          const isHover = hoverMentionId
+            ? seg.mentionIds.includes(hoverMentionId)
+            : seg.entityIds.includes(hoverEntityId ?? "");
 
           return (
             <span
