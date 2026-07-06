@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useStore } from "../store";
 import { colorForIndex, colorForType } from "../colors";
 import type { Entity } from "../types";
@@ -32,6 +32,9 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
   const setSelectionSpan = useStore((s) => s.setSelectionSpan);
 
   const ref = useRef<HTMLDivElement>(null);
+  // True while something is being dragged over this card — drives the drop-target
+  // highlight so the user can see where a reassign/merge will land before release.
+  const [dragOver, setDragOver] = useState(false);
   const color = colorForIndex(index);
   const active = entity.id === activeEntityId;
   const unconfirmed = entity.origin === "prediction" && !entity.reviewed;
@@ -61,6 +64,7 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
     e.stopPropagation(); // handled here; don't let it fall through to the list's split-on-drop
+    setDragOver(false);
     // Clear here too: a split/reassign unmounts the dragged chip, so its own
     // onDragEnd may never fire and would leave the drop-zone stuck on screen.
     setDraggingMention(null);
@@ -86,13 +90,23 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
         "ecard" +
         (active ? " active" : "") +
         (unconfirmed ? " unconfirmed" : "") +
-        (isMergeTarget ? " merge-target" : "")
+        (isMergeTarget ? " merge-target" : "") +
+        (dragOver ? " drop-target" : "") +
+        // A span is selected → clicking this card adds it here; hint that on hover.
+        (selectionSpan ? " pick-target" : "")
       }
       draggable
       onDragStart={(e) =>
         e.dataTransfer.setData("application/json", JSON.stringify({ kind: "entity", entityId: entity.id }))
       }
-      onDragOver={(e) => e.preventDefault()}
+      onDragOver={(e) => {
+        e.preventDefault();
+        setDragOver(true);
+      }}
+      onDragLeave={(e) => {
+        // Ignore leaves into the card's own children (chips, buttons) to avoid flicker.
+        if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOver(false);
+      }}
       onDrop={onDrop}
       onClick={onCardClick}
       onMouseEnter={() => setHoverEntity(entity.id)}

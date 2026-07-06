@@ -39,7 +39,12 @@ export function MentionChip({ entityId, mention, added }: Props) {
 
   return (
     <span
-      className={"chip" + (hoverMentionId === mention.id ? " hover" : "")}
+      className={
+        "chip" +
+        (hoverMentionId === mention.id ? " hover" : "") +
+        // With a span selected, clicking this chip adds it as an extra fragment.
+        (selectionSpan ? " pick-target" : "")
+      }
       draggable
       onDragStart={(e) => {
         e.stopPropagation();
