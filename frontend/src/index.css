@@ -122,6 +122,10 @@ kbd {
 .ecard.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
 .ecard.unconfirmed { border-style: dashed; opacity: 0.82; }
 .ecard.merge-target { outline: 2px dashed var(--accent); outline-offset: 2px; }
+/* Something is being dragged over this card (mention reassign / entity merge). */
+.ecard.drop-target { outline: 2px solid var(--accent); outline-offset: 2px; background: var(--accent-soft); }
+/* A text span is selected; mark the card under the cursor like merge mode. */
+.ecard.pick-target:hover { outline: 2px dashed var(--accent); outline-offset: 2px; background: var(--accent-soft); cursor: copy; }
 .ecard-head { display: flex; align-items: center; gap: 8px; }
 .swatch { width: 12px; height: 12px; border-radius: 3px; flex: none; }
 .ecard .keyhint { font-size: 10px; color: var(--muted); font-family: ui-monospace, monospace; min-width: 14px; text-align: center; }
@@ -139,6 +143,8 @@ kbd {
 }
 .chip:hover { background: #eef2f7; }
 .chip.hover { outline: 1px solid var(--accent); }
+/* A text span is selected; clicking adds it to this mention as an extra fragment. */
+.chip.pick-target:hover { outline: 1px dashed var(--accent); background: var(--accent-soft); cursor: copy; }
 .chip .x { color: var(--muted); cursor: pointer; font-weight: 700; }
 .chip .x:hover { color: var(--danger); }
 .chip .added { color: var(--ok); font-weight: 700; }
