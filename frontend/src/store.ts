@@ -96,6 +96,7 @@ interface State {
   hoverEntityId: string | null;
   hoverMentionId: string | null;
   pendingMergeId: string | null; // first entity chosen for a merge
+  draggingMention: { mentionId: string; fromId: string } | null; // mention chip currently being dragged
   uidPromptEntityId: string | null; // entity whose unique-id prompt is open
   selectionSpan: { start: number; end: number } | null; // current normalized text selection
   scrollTo: { start: number; nonce: number } | null; // request TextPanel to scroll/flash a span
@@ -122,6 +123,7 @@ interface State {
   setHoverEntity: (id: string | null) => void;
   setHoverMention: (id: string | null) => void;
   setActiveEntity: (id: string | null) => void;
+  setDraggingMention: (v: { mentionId: string; fromId: string } | null) => void;
   cycleActive: (dir: 1 | -1) => void;
   beginMerge: (id: string) => void;
   cancelMerge: () => void;
@@ -232,6 +234,7 @@ export const useStore = create<State>((set, get) => {
     hoverEntityId: null,
     hoverMentionId: null,
     pendingMergeId: null,
+    draggingMention: null,
     uidPromptEntityId: null,
     selectionSpan: null,
     scrollTo: null,
@@ -273,6 +276,7 @@ export const useStore = create<State>((set, get) => {
           hoverEntityId: null,
           hoverMentionId: null,
           pendingMergeId: null,
+          draggingMention: null,
           uidPromptEntityId: null,
           selectionSpan: null,
           undoStack: [],
@@ -314,6 +318,7 @@ export const useStore = create<State>((set, get) => {
     setHoverEntity: (id) => set({ hoverEntityId: id }),
     setHoverMention: (id) => set({ hoverMentionId: id }),
     setActiveEntity: (id) => set({ activeEntityId: id }),
+    setDraggingMention: (v) => set({ draggingMention: v }),
     cycleActive(dir) {
       const s = get();
       if (s.entities.length === 0) return;

@@ -19,6 +19,7 @@ export function MentionChip({ entityId, mention, added }: Props) {
   const hoverMentionId = useStore((s) => s.hoverMentionId);
   const selectionSpan = useStore((s) => s.selectionSpan);
   const setSelectionSpan = useStore((s) => s.setSelectionSpan);
+  const setDraggingMention = useStore((s) => s.setDraggingMention);
 
   const discontinuous = mention.fragments.length > 1;
 
@@ -47,13 +48,15 @@ export function MentionChip({ entityId, mention, added }: Props) {
           JSON.stringify({ kind: "mention", mentionId: mention.id, fromId: entityId })
         );
         e.dataTransfer.effectAllowed = "move";
+        setDraggingMention({ mentionId: mention.id, fromId: entityId });
       }}
+      onDragEnd={() => setDraggingMention(null)}
       onClick={onChipClick}
       onMouseEnter={() => setHoverMention(mention.id)}
       onMouseLeave={() => setHoverMention(null)}
       title={
         mention.fragments.map((f) => `[${f.start}, ${f.end})`).join(" + ") +
-        " — click to locate (with text selected: add as fragment), drag to reassign"
+        " — click to locate (with text selected: add as fragment), drag onto another entity to reassign, drag onto empty space to split into a new entity"
       }
     >
       {added && <span className="added" title="added vs. prediction">+</span>}

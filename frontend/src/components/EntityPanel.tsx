@@ -10,7 +10,21 @@ export function EntityPanel() {
   const acceptAll = useStore((s) => s.acceptAll);
   const newEmptyEntity = useStore((s) => s.newEmptyEntity);
   const revertToPrediction = useStore((s) => s.revertToPrediction);
+  const draggingMention = useStore((s) => s.draggingMention);
+  const splitMention = useStore((s) => s.splitMention);
+  const setDraggingMention = useStore((s) => s.setDraggingMention);
   const hasPrediction = prediction.length > 0;
+
+  function onListDrop(e: React.DragEvent) {
+    e.preventDefault();
+    const raw = e.dataTransfer.getData("application/json");
+    setDraggingMention(null);
+    if (!raw) return;
+    const data = JSON.parse(raw);
+    // A mention dropped anywhere that isn't another entity card (which stops
+    // propagation itself) — pull it out into a brand-new entity.
+    if (data.kind === "mention") splitMention(data.fromId, data.mentionId);
+  }
 
   // Digit keys 1-9 create an entity of the matching type; cap the hint at the
   // number of configured types (and at 9, the highest reachable digit).
@@ -43,7 +57,10 @@ export function EntityPanel() {
         )}
       </div>
 
-      <div className="entity-list">
+      <div className="entity-list" onDragOver={(e) => e.preventDefault()} onDrop={onListDrop}>
+        {draggingMention && (
+          <div className="split-dropzone">Drop here to split into a new entity</div>
+        )}
         {entities.length === 0 && (
           <div className="entity-empty">
             No entities yet.

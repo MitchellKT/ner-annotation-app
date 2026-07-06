@@ -58,6 +58,7 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
+    e.stopPropagation(); // handled here; don't let it fall through to the list's split-on-drop
     const raw = e.dataTransfer.getData("application/json");
     if (!raw) return;
     const data = JSON.parse(raw);
