@@ -23,6 +23,8 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
   const cancelMerge = useStore((s) => s.cancelMerge);
   const mergeEntities = useStore((s) => s.mergeEntities);
   const reassignMention = useStore((s) => s.reassignMention);
+  const splitMention = useStore((s) => s.splitMention);
+  const setDraggingMention = useStore((s) => s.setDraggingMention);
   const openUidPrompt = useStore((s) => s.openUidPrompt);
   const setHoverEntity = useStore((s) => s.setHoverEntity);
   const selectionSpan = useStore((s) => s.selectionSpan);
@@ -58,11 +60,20 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
 
   function onDrop(e: React.DragEvent) {
     e.preventDefault();
+    e.stopPropagation(); // handled here; don't let it fall through to the list's split-on-drop
+    // Clear here too: a split/reassign unmounts the dragged chip, so its own
+    // onDragEnd may never fire and would leave the drop-zone stuck on screen.
+    setDraggingMention(null);
     const raw = e.dataTransfer.getData("application/json");
     if (!raw) return;
     const data = JSON.parse(raw);
     if (data.kind === "mention" && data.fromId !== entity.id) {
       reassignMention(data.mentionId, data.fromId, entity.id);
+    } else if (data.kind === "mention" && data.fromId === entity.id && entity.mentions.length > 1) {
+      // Dragged a chip off and released it back over its own card → pull it out
+      // into a new entity of its own (the drag-out-to-split gesture). Only when
+      // the entity has other mentions; a lone chip has nothing to split from.
+      splitMention(entity.id, data.mentionId);
     } else if (data.kind === "entity" && data.entityId !== entity.id) {
       mergeEntities(entity.id, data.entityId); // drop source onto target; target keeps
     }

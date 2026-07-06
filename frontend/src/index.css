@@ -107,6 +107,16 @@ kbd {
 .entity-tools { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .entity-list { overflow-y: auto; flex: 1; padding: 10px; display: flex; flex-direction: column; gap: 8px; }
 .entity-empty { color: var(--muted); text-align: center; padding: 30px 16px; font-size: 13px; }
+.split-dropzone {
+  border: 2px dashed var(--accent);
+  border-radius: var(--radius);
+  color: var(--accent);
+  background: var(--accent-soft);
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 14px 8px;
+}
 
 .ecard { border: 1px solid var(--border); border-radius: var(--radius); background: var(--panel); padding: 8px 10px; box-shadow: var(--shadow); }
 .ecard.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
