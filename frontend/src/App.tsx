@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useStore } from "./store";
+import { useSession } from "./session";
 import { useKeyboard } from "./hooks/useKeyboard";
 import { TopBar } from "./components/TopBar";
 import { DocNavigator } from "./components/DocNavigator";
@@ -7,10 +8,26 @@ import { TextPanel } from "./components/TextPanel";
 import { EntityPanel } from "./components/EntityPanel";
 import { KeyboardHelp } from "./components/KeyboardHelp";
 import { UidPrompt } from "./components/UidPrompt";
+import { NameScreen } from "./components/NameScreen";
+import { UploadScreen } from "./components/UploadScreen";
 import { cpSlice } from "./lib/offsets";
 import { colorForType } from "./colors";
 
 export default function App() {
+  const phase = useSession((s) => s.phase);
+  const bootstrap = useSession((s) => s.bootstrap);
+
+  useEffect(() => {
+    void bootstrap();
+  }, [bootstrap]);
+
+  if (phase === "booting") return <div className="gate"><div className="center-msg">Loading…</div></div>;
+  if (phase === "name") return <NameScreen />;
+  if (phase === "upload") return <UploadScreen />;
+  return <Annotator />;
+}
+
+function Annotator() {
   const init = useStore((s) => s.init);
   const loading = useStore((s) => s.loading);
   const error = useStore((s) => s.error);

@@ -1,0 +1,18 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+# Apply everything with:  kubectl apply -k k8s/
+# (Create the real SESSION_SECRET first — see secret.yaml / k8s/README.md.)
+resources:
+  - configmap.yaml
+  - secret.yaml
+  - pvc.yaml
+  - deployment.yaml
+  - service.yaml
+  - ingress.yaml            # remove this line if you don't use an Ingress
+
+# Point this at your pushed image, e.g.:
+#   images:
+#     - name: ner-annotator
+#       newName: ghcr.io/your-org/ner-annotator
+#       newTag: "0.2.0"

@@ -1,0 +1,14 @@
+# Non-secret runtime configuration.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: ner-annotator-config
+  labels:
+    app: ner-annotator
+data:
+  DATA_DIR: "/data"
+  # Default entity types offered to a new workspace; each upload may override.
+  DEFAULT_TYPES: "PER,LOC,ORG,TIME"
+  PORT: "8000"
+  # Set to "1" when served over HTTPS so the session cookie is marked Secure.
+  SESSION_COOKIE_SECURE: "1"

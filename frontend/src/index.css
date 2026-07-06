@@ -170,3 +170,81 @@ kbd {
 
 .banner { padding: 8px 14px; background: #fff7ed; border-bottom: 1px solid #f3d8a8; color: #92400e; font-size: 13px; }
 .center-msg { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); }
+
+/* ---- identify / upload gate ---- */
+.gate {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--bg);
+}
+.gate-card {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 28px;
+  width: 100%;
+  max-width: 420px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.gate-card.wide { max-width: 560px; }
+.gate-card h1 { margin: 0; font-size: 20px; letter-spacing: -0.3px; }
+.gate-sub { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
+.gate-sub code { background: #eef1f4; padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+.gate-top { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; }
+.gate-who { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.gate-input {
+  font: inherit;
+  padding: 9px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  width: 100%;
+}
+.gate-input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.gate-field { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); }
+.gate-btn { padding: 9px 12px; font-weight: 600; }
+.gate-error { color: var(--danger); font-size: 13px; }
+.gate-note { font-size: 12px; color: var(--muted); background: #fff7ed; border: 1px solid #f3d8a8; color: #92400e; padding: 8px 10px; border-radius: 6px; }
+.dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-height: 92px;
+  padding: 16px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: pointer;
+  background: #fafbfc;
+}
+.dropzone:hover, .dropzone.over { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
+.linkish {
+  border: none;
+  background: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+}
+.linkish:hover { text-decoration: underline; background: none; }
+
+/* ---- topbar user / download ---- */
+.topbar-sep { width: 1px; align-self: stretch; background: var(--border); margin: 0 2px; }
+.topbar-link {
+  font-size: 13px;
+  color: var(--text);
+  text-decoration: none;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 4px 10px;
+}
+.topbar-link:hover { background: #f1f3f5; }
+.topbar-user { font-size: 13px; color: var(--muted); }

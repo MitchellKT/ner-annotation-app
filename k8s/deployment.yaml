@@ -1,0 +1,78 @@
+# Single-replica Deployment.
+#
+# Why replicas: 1 + Recreate:
+#   The app keeps per-user annotation state in memory (one Store per user) and
+#   writes JSONL files to a ReadWriteOnce volume. Two pods can't mount RWO at
+#   once, and two in-memory copies of the same user's Store would diverge. For
+#   an internal annotation tool with a handful of concurrent annotators, one
+#   small pod is the right trade-off. To scale horizontally later, move state to
+#   Postgres (or RWX storage + sticky sessions) — the API surface already
+#   isolates per-user access, so that swap is contained to store.py/workspace.py.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ner-annotator
+  labels:
+    app: ner-annotator
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate            # never run two pods against the RWO volume at once
+  selector:
+    matchLabels:
+      app: ner-annotator
+  template:
+    metadata:
+      labels:
+        app: ner-annotator
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001         # so the mounted volume is group-writable by the app user
+      containers:
+        - name: ner-annotator
+          image: ner-annotator:latest   # <-- replace with your registry/image:tag
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: ner-annotator-config
+            - secretRef:
+                name: ner-annotator-secrets
+          volumeMounts:
+            - name: data
+              mountPath: /data
+            - name: tmp
+              mountPath: /tmp     # writable scratch for spooled uploads (root fs is read-only)
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "256Mi"
+            limits:
+              cpu: "1"
+              memory: "1Gi"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: ner-annotator-data
+        - name: tmp
+          emptyDir: {}

@@ -1,0 +1,16 @@
+# Persistent volume for all per-user workspaces (/data/users/<slug>/...).
+# ReadWriteOnce is sufficient because the Deployment runs a single replica
+# (see deployment.yaml for why). Bump the size / storageClassName to suit.
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: ner-annotator-data
+  labels:
+    app: ner-annotator
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 5Gi
+  # storageClassName: standard   # uncomment / set to your cluster's class

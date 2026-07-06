@@ -18,8 +18,19 @@ RUN pip install --no-cache-dir ./backend
 
 COPY --from=frontend /app/frontend/dist ./frontend/dist
 
+# Run as a non-root user; /data is a mounted volume it must be able to write.
+RUN useradd --uid 10001 --create-home app \
+    && mkdir -p /data \
+    && chown -R app:app /data
+USER app
+
+# Multi-user server: each annotator identifies by name and uploads their own
+# file into a per-user workspace under $DATA_DIR. Configure via env / k8s.
+ENV DATA_DIR=/data \
+    DEFAULT_TYPES=PER,LOC,ORG,TIME \
+    PORT=8000
+
 VOLUME ["/data"]
 EXPOSE 8000
 
 ENTRYPOINT ["python", "-m", "ner_annotator", "--host", "0.0.0.0", "--no-open"]
-CMD ["--input", "/data/input.jsonl", "--output", "/data/output.jsonl", "--types", "PER,LOC,ORG,TIME"]

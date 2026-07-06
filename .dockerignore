@@ -13,3 +13,5 @@ __pycache__
 *.egg-info
 *.state.json
 sample/annotations*.jsonl
+_data
+backend/_data

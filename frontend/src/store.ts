@@ -1,5 +1,6 @@
 import { create } from "zustand";
-import { api, beaconSave } from "./api";
+import { api, ApiError, beaconSave } from "./api";
+import { useSession } from "./session";
 import type {
   AppConfig,
   DocData,
@@ -151,6 +152,15 @@ interface State {
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
 
+/** Route session/workspace errors back to the gate. Returns true if handled. */
+function routeAuthError(e: unknown): boolean {
+  if (e instanceof ApiError && (e.status === 401 || e.status === 409)) {
+    useSession.getState().handleAuthError(e.status);
+    return true;
+  }
+  return false;
+}
+
 export const useStore = create<State>((set, get) => {
   function snapshot(): Snapshot {
     const s = get();
@@ -204,6 +214,7 @@ export const useStore = create<State>((set, get) => {
       });
     } catch (e) {
       set({ saveState: "error", error: String(e) });
+      routeAuthError(e);
     }
   }
 
@@ -250,6 +261,7 @@ export const useStore = create<State>((set, get) => {
         if (first) await get().loadDoc(first.doc_id);
       } catch (e) {
         set({ error: String(e), loading: false });
+        routeAuthError(e);
       }
     },
 
@@ -281,6 +293,7 @@ export const useStore = create<State>((set, get) => {
         });
       } catch (e) {
         set({ error: String(e) });
+        routeAuthError(e);
       }
     },
 

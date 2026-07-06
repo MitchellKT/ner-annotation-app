@@ -1,4 +1,6 @@
 import { useStore } from "../store";
+import { useSession } from "../session";
+import { api } from "../api";
 
 const SAVE_LABEL: Record<string, string> = {
   idle: "",
@@ -15,6 +17,9 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
   const prev = useStore((s) => s.prev);
   const next = useStore((s) => s.next);
   const markDone = useStore((s) => s.markDone);
+  const session = useSession((s) => s.session);
+  const replaceFile = useSession((s) => s.replaceFile);
+  const signOut = useSession((s) => s.signOut);
 
   const done = summaries.filter((d) => d.status === "done").length;
   const total = summaries.length;
@@ -43,6 +48,22 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
         Done &amp; next
       </button>
       <button onClick={onHelp} title="keyboard shortcuts (?)">?</button>
+
+      <span className="topbar-sep" />
+      <a
+        href={api.downloadOutputUrl()}
+        download
+        className="topbar-link"
+        title="download your annotations (output.jsonl)"
+      >
+        ⭳ output
+      </a>
+      <button onClick={replaceFile} title="upload a different file (current one is archived)">
+        file…
+      </button>
+      <span className="topbar-user" title="signed in — click to switch user">
+        <button className="linkish" onClick={() => void signOut()}>{session?.name ?? "?"}</button>
+      </span>
     </div>
   );
 }

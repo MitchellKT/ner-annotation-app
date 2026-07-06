@@ -50,33 +50,51 @@ cd ../frontend
 npm install
 npm run build
 
-# 3) launch — opens http://127.0.0.1:8000
+# 3) launch — a multi-user server; opens http://127.0.0.1:8000
 cd ../backend
-python -m ner_annotator --input ../sample/input.jsonl --output ../sample/annotations.jsonl --types PER,LOC,ORG,TIME
+python -m ner_annotator --data-dir ./_data --types PER,LOC,ORG,TIME
 ```
 
-Re-running with the same `--output` **resumes** the previous session (annotations + status).
+The app is a **multi-user system**. Each annotator:
+
+1. **Identifies** by name on the first screen (a signed, HttpOnly cookie session — no
+   password; the name is the identity, so annotations are saved under it).
+2. **Uploads** the `.jsonl` file they want to annotate. Every user gets their own isolated
+   workspace under `<data-dir>/users/<slug>/`, so different people annotate different files
+   concurrently without interfering.
+3. Annotates as before, and can **download their `output.jsonl`** at any time (⭳ output in
+   the toolbar). "file…" swaps the current file (the old one is archived, never lost);
+   the name button switches user.
+
+`--data-dir` / `-d` is the root for all workspaces (default `$DATA_DIR` or `/data`). Per-user
+state — input, output, and per-doc review status — persists there, so a restart transparently
+resumes every user. `SESSION_SECRET` should be set to a stable value in production so sessions
+survive restarts and can't be forged.
 
 ### Configuring entity types
 
-`--types` / `-t` is **required**: pass the comma-separated label set for this run.
-
-```bash
-python -m ner_annotator -i in.jsonl -o out.jsonl --types PER,LOC,ORG,MISC,EVENT
-```
+`--types` / `-t` (or `$DEFAULT_TYPES`) sets the **default** comma-separated label set offered to
+a new workspace; each annotator may override it on the upload screen.
 
 The first nine types map to the digit keys `1`–`9` in the UI; any beyond that are still
-selectable from each entity card's type dropdown. Types are free-form strings — predictions
-loaded from `--input` may use labels outside this set and will still import.
+selectable from each entity card's type dropdown. Types are free-form strings — predictions in
+an uploaded file may use labels outside this set and will still import.
 
 ### Development (hot reload)
 
 ```bash
-# terminal 1 — API
-cd backend && python -m ner_annotator -i ../sample/input.jsonl -o ../sample/annotations.jsonl --types PER,LOC,ORG,TIME --no-open
+# terminal 1 — API (SESSION_SECRET keeps cookies stable across restarts in dev)
+cd backend && SESSION_SECRET=dev python -m ner_annotator --data-dir ./_data --types PER,LOC,ORG,TIME --no-open
 # terminal 2 — Vite dev server (proxies /api to :8000)
 cd frontend && npm run dev      # http://localhost:5173
 ```
+
+### Kubernetes
+
+The app is built to run as a container on k8s: identify → upload → annotate, with per-user
+files on a persistent volume. See [`k8s/`](k8s/) for manifests (Deployment, PVC, Service,
+Ingress, Secret, ConfigMap) and [`k8s/README.md`](k8s/README.md) for the deploy walkthrough and
+the single-replica rationale.
 
 ## Keyboard shortcuts
 
@@ -141,8 +159,12 @@ cd frontend && npm test                # segment tiling + offset/selection logic
 ## Project layout
 
 ```
-backend/ner_annotator/   models.py · store.py · main.py · __main__.py   (FastAPI + file I/O)
+backend/ner_annotator/   models.py · store.py           (per-file schema + JSONL I/O)
+                         session.py · workspace.py      (named sessions + per-user workspaces)
+                         main.py · __main__.py          (FastAPI app + server entrypoint)
 frontend/src/            lib/segments.ts · lib/offsets.ts               (rendering & selection core)
-                         store.ts · api.ts · components/ · hooks/       (UI)
+                         session.ts · components/NameScreen · UploadScreen (identify + upload gate)
+                         store.ts · api.ts · components/ · hooks/       (annotator UI)
+k8s/                     Deployment · PVC · Service · Ingress · Secret · ConfigMap
 sample/input.jsonl       example docs: predictions, from-scratch, nested, unicode
 ```

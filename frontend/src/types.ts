@@ -37,6 +37,22 @@ export interface AppConfig {
   warnings: string[];
 }
 
+// ---- session / workspace ----
+export interface SessionInfo {
+  slug: string;
+  name: string;
+  has_workspace: boolean;
+}
+
+export interface WorkspaceInfo {
+  filename: string | null;
+  types: string[];
+  uploaded_at: number | null;
+  n_docs: number;
+  n_done: number;
+  warnings: string[];
+}
+
 // ---- Client-side model (stable ids; origin/reviewed are session-only) ----
 export type Origin = "prediction" | "user";
 

@@ -34,3 +34,7 @@ Thumbs.db
 .vscode/
 *.swp
 *.log
+
+# local multi-user dev data dir
+_data
+backend/_data

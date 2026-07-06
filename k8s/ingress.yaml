@@ -1,0 +1,33 @@
+# Optional: expose the app over HTTPS at a hostname. Requires an ingress
+# controller (e.g. ingress-nginx) and, for TLS, cert-manager or a pre-created
+# TLS secret. If you'd rather not run an Ingress, skip this file and use
+#   kubectl port-forward svc/ner-annotator 8000:80
+#
+# Uploads can be a few MB; the proxy-body-size annotation must be >= the app's
+# upload cap (25 MB) or nginx will 413 large files before they reach the app.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ner-annotator
+  labels:
+    app: ner-annotator
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "32m"
+    # cert-manager.io/cluster-issuer: letsencrypt-prod   # if using cert-manager
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - annotate.example.com          # <-- replace with your hostname
+      secretName: ner-annotator-tls
+  rules:
+    - host: annotate.example.com        # <-- replace with your hostname
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ner-annotator
+                port:
+                  number: 80
