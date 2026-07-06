@@ -21,5 +21,5 @@ COPY --from=frontend /app/frontend/dist ./frontend/dist
 VOLUME ["/data"]
 EXPOSE 8000
 
-ENTRYPOINT ["python", "-m", "ner_annotator", "--host", "0.0.0.0", "--no-open"]
+ENTRYPOINT ["python", "-m", "ner_annotator", "--host", "0.0.0.0", "--no-open", "--static", "/app/frontend/dist"]
 CMD ["--input", "/data/input.jsonl", "--output", "/data/output.jsonl", "--types", "PER,LOC,ORG,TIME"]
