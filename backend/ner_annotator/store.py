@@ -27,6 +27,9 @@ from .models import CANONICAL_TYPES, Doc, Entity, Fragment, Mention, merge_fragm
 
 VALID_STATUSES = ("unreviewed", "in_progress", "done")
 
+# Fallback bucket for docs whose input omits ``type`` / ``source``.
+UNSPECIFIED = "unspecified"
+
 
 def _mention_to_json(mention: Mention) -> dict:
     # Single-fragment (continuous) mentions keep the original {"start","end"}
@@ -54,6 +57,7 @@ class Store:
         output_path: os.PathLike | str,
         state_path: Optional[os.PathLike | str] = None,
         types: Optional[List[str]] = None,
+        prefs_path: Optional[os.PathLike | str] = None,
     ) -> None:
         self.input_path = Path(input_path)
         self.output_path = Path(output_path)
@@ -62,16 +66,26 @@ class Store:
             if state_path is not None
             else self.output_path.with_name(self.output_path.name + ".state.json")
         )
+        # Per-user preferences (currently the source selection). Kept in a
+        # separate sidecar so the annotation output stays exactly on-schema.
+        self.prefs_path = (
+            Path(prefs_path)
+            if prefs_path is not None
+            else self.output_path.with_name(self.output_path.name + ".prefs.json")
+        )
         # Entity types offered in the UI (digit keys 1-9 map to the first nine).
         self.types: List[str] = list(types) if types else list(CANONICAL_TYPES)
         self._lock = threading.RLock()
 
         self.order: List[str] = []
         self.index: Dict[str, int] = {}
-        # doc_id -> {"text", "prediction": [Entity], "entities": [Entity]}
+        # doc_id -> {"text", "type", "source", "prediction": [Entity], "entities": [Entity]}
         self.docs: Dict[str, dict] = {}
         self.status: Dict[str, str] = {}
         self.warnings: List[str] = []
+        # doc-type -> [selected sources]; None means "no selection saved yet"
+        # (unfiltered — every document is shown).
+        self.selection: Optional[Dict[str, List[str]]] = None
 
         self._load()
 
@@ -100,6 +114,8 @@ class Store:
                 self.order.append(doc.doc_id)
                 self.docs[doc.doc_id] = {
                     "text": doc.text,
+                    "type": doc.type or UNSPECIFIED,
+                    "source": doc.source or UNSPECIFIED,
                     "prediction": pred,
                     "entities": [e.model_copy(deep=True) for e in pred],
                 }
@@ -107,6 +123,7 @@ class Store:
 
         self._merge_output()
         self._load_state()
+        self._load_prefs()
 
     def _merge_output(self) -> None:
         if not self.output_path.exists():
@@ -136,6 +153,37 @@ class Store:
         for doc_id, st in data.get("status", {}).items():
             if doc_id in self.status and st in VALID_STATUSES:
                 self.status[doc_id] = st
+
+    def _load_prefs(self) -> None:
+        if not self.prefs_path.exists():
+            return
+        try:
+            data = json.loads(self.prefs_path.read_text(encoding="utf-8"))
+        except Exception:  # noqa: BLE001
+            return
+        sel = data.get("selection")
+        if isinstance(sel, dict):
+            self.selection = self._sanitize_selection(sel)
+
+    def _sanitize_selection(self, selection: dict) -> Dict[str, List[str]]:
+        """Keep only (type, source) pairs that exist in the loaded corpus."""
+        available = self._sources_by_type()
+        cleaned: Dict[str, List[str]] = {}
+        for doc_type, sources in selection.items():
+            if doc_type not in available or not isinstance(sources, (list, tuple)):
+                continue
+            allowed = available[doc_type]
+            picked = [s for s in sources if s in allowed]
+            if picked:
+                cleaned[doc_type] = picked
+        return cleaned
+
+    def _sources_by_type(self) -> Dict[str, set]:
+        by_type: Dict[str, set] = {}
+        for doc_id in self.order:
+            d = self.docs[doc_id]
+            by_type.setdefault(d["type"], set()).add(d["source"])
+        return by_type
 
     def _sanitize(self, entities: List[Entity], text: str, where: str) -> List[Entity]:
         """Clamp offsets to text bounds, drop invalid/empty, preserve order."""
@@ -171,15 +219,46 @@ class Store:
     def config(self) -> dict:
         return {"types": list(self.types)}
 
+    def metadata(self) -> dict:
+        """Document metadata for the source-selection screen: the sources
+        available under each doc ``type`` (sorted) plus per-(type, source)
+        document counts, and this user's saved ``selection`` (if any)."""
+        with self._lock:
+            counts: Dict[str, Dict[str, int]] = {}
+            for doc_id in self.order:
+                d = self.docs[doc_id]
+                counts.setdefault(d["type"], {})
+                counts[d["type"]][d["source"]] = counts[d["type"]].get(d["source"], 0) + 1
+            sources_by_type = {t: sorted(srcs) for t, srcs in counts.items()}
+            return {
+                "sourcesByType": sources_by_type,
+                "counts": counts,
+                "selection": self.selection,
+            }
+
+    def set_selection(self, selection: dict) -> Dict[str, List[str]]:
+        with self._lock:
+            self.selection = self._sanitize_selection(selection or {})
+            self._flush_prefs()
+            return self.selection
+
+    def _is_selected(self, doc_id: str) -> bool:
+        if self.selection is None:
+            return True
+        d = self.docs[doc_id]
+        return d["source"] in self.selection.get(d["type"], [])
+
     def summaries(self) -> List[dict]:
         with self._lock:
-            return [self._summary(doc_id) for doc_id in self.order]
+            return [self._summary(doc_id) for doc_id in self.order if self._is_selected(doc_id)]
 
     def _summary(self, doc_id: str) -> dict:
         d = self.docs[doc_id]
         return {
             "doc_id": doc_id,
             "index": self.index[doc_id],
+            "type": d["type"],
+            "source": d["source"],
             "status": self.status[doc_id],
             "n_entities": len(d["entities"]),
             "n_mentions": sum(len(e.mentions) for e in d["entities"]),
@@ -194,6 +273,8 @@ class Store:
             return {
                 "doc_id": doc_id,
                 "index": self.index[doc_id],
+                "type": d["type"],
+                "source": d["source"],
                 "text": d["text"],
                 "status": self.status[doc_id],
                 "entities": [_entity_to_json(e) for e in d["entities"]],
@@ -232,6 +313,12 @@ class Store:
         self._atomic_write(
             self.state_path,
             json.dumps({"status": self.status}, ensure_ascii=False, indent=0),
+        )
+
+    def _flush_prefs(self) -> None:
+        self._atomic_write(
+            self.prefs_path,
+            json.dumps({"selection": self.selection}, ensure_ascii=False, indent=0),
         )
 
     @staticmethod

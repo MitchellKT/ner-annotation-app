@@ -17,6 +17,7 @@ export function useKeyboard(toggleHelp: () => void) {
     function onKey(e: KeyboardEvent) {
       if (isTypingTarget(e.target)) return;
       const s = useStore.getState();
+      if (s.phase !== "annotate") return; // shortcuts only while annotating
       const span = s.selectionSpan;
       const types = s.config?.types ?? ["PER", "LOC", "ORG", "TIME"];
 

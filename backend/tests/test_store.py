@@ -185,6 +185,108 @@ def test_fragments_are_sorted_merged_and_clamped(tmp_path):
     assert any("dropped out-of-range fragment" in w for w in store.warnings)
 
 
+def test_metadata_groups_sources_by_type_with_counts(tmp_path):
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [
+        {"doc_id": "d1", "text": "a", "type": "news", "source": "cnn.com"},
+        {"doc_id": "d2", "text": "b", "type": "news", "source": "cnn.com"},
+        {"doc_id": "d3", "text": "c", "type": "news", "source": "bbc.com"},
+        {"doc_id": "d4", "text": "d", "type": "article", "source": "medium.com"},
+        {"doc_id": "d5", "text": "e"},  # no metadata -> unspecified/unspecified
+    ])
+    md = Store(inp, out).metadata()
+    assert md["sourcesByType"] == {
+        "news": ["bbc.com", "cnn.com"],
+        "article": ["medium.com"],
+        "unspecified": ["unspecified"],
+    }
+    assert md["counts"]["news"] == {"cnn.com": 2, "bbc.com": 1}
+    assert md["selection"] is None
+
+
+def test_selection_filters_summaries_and_persists(tmp_path):
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [
+        {"doc_id": "d1", "text": "a", "type": "news", "source": "cnn.com"},
+        {"doc_id": "d2", "text": "b", "type": "news", "source": "bbc.com"},
+        {"doc_id": "d3", "text": "c", "type": "article", "source": "medium.com"},
+    ])
+    store = Store(inp, out)
+    assert [s["doc_id"] for s in store.summaries()] == ["d1", "d2", "d3"]  # no selection = all
+
+    # Selecting one source (plus an unknown pair that gets dropped) filters docs.
+    saved = store.set_selection({"news": ["cnn.com", "nope.com"], "sports": ["x"]})
+    assert saved == {"news": ["cnn.com"]}
+    summ = store.summaries()
+    assert [s["doc_id"] for s in summ] == ["d1"]
+    assert summ[0]["type"] == "news" and summ[0]["source"] == "cnn.com"
+
+    # A fresh Store reloads the persisted selection from the prefs sidecar.
+    store2 = Store(inp, out)
+    assert store2.selection == {"news": ["cnn.com"]}
+    assert [s["doc_id"] for s in store2.summaries()] == ["d1"]
+
+
+def test_get_doc_includes_metadata(tmp_path):
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [{"doc_id": "d1", "text": "hi", "type": "News", "source": " CNN "}])
+    doc = Store(inp, out).get_doc("d1")
+    assert doc["type"] == "News"
+    assert doc["source"] == "CNN"  # trimmed
+
+
+def test_workspace_isolates_users_and_resumes(tmp_path):
+    from ner_annotator.workspace import Workspace
+
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [
+        {"doc_id": "d1", "text": "Alice met Bob.", "type": "news", "source": "cnn.com"},
+        {"doc_id": "d2", "text": "Another doc.", "type": "article", "source": "medium.com"},
+    ])
+    ws = Workspace(inp, out, types=["PER", "LOC"])
+    assert ws.n_docs == 2
+    assert ws.metadata()["sourcesByType"] == {"news": ["cnn.com"], "article": ["medium.com"]}
+
+    alice = ws.get_user("Alice")
+    bob = ws.get_user("Bob")
+    assert alice is not bob
+    # Same username resolves to the same store instance.
+    assert ws.get_user("Alice") is alice
+
+    alice.save_doc("d1", [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}], status="done")
+    bob.save_doc("d1", [{"type": "LOC", "mentions": [{"start": 10, "end": 13}]}], status="in_progress")
+
+    # Per-user files exist and are distinct; users don't see each other's work.
+    assert alice.get_doc("d1")["entities"] == [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}]
+    assert bob.get_doc("d1")["entities"] == [{"type": "LOC", "mentions": [{"start": 10, "end": 13}]}]
+
+    # A brand-new Workspace (app restart) resumes each user's annotations.
+    ws2 = Workspace(inp, out, types=["PER", "LOC"])
+    assert ws2.get_user("Alice").get_doc("d1")["status"] == "done"
+    assert ws2.get_user("Bob").get_doc("d1")["status"] == "in_progress"
+    assert "Alice" in ws2.known_users() and "Bob" in ws2.known_users()
+
+
+def test_workspace_slug_collisions_stay_distinct(tmp_path):
+    from ner_annotator.workspace import Workspace
+
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [{"doc_id": "d1", "text": "x"}])
+    ws = Workspace(inp, out)
+    # Two names that slugify to the same base must not share files.
+    a = ws.get_user("Jane Doe")
+    b = ws.get_user("jane/doe")
+    assert a.output_path != b.output_path
+
+    a.save_doc("d1", [{"type": "PER", "mentions": [{"start": 0, "end": 1}]}], status="done")
+    assert b.get_doc("d1")["entities"] == []
+
+
 def test_mention_rejects_bad_order():
     with pytest.raises(Exception):
         Mention.model_validate({"start": 5, "end": 5})

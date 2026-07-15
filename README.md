@@ -16,13 +16,18 @@ It is built for two workflows, both optimised for minimal time per document:
 Input and output are the same `.jsonl` schema, one record per line:
 
 ```json
-{"doc_id": "doc-0001", "text": "Barack Obama ... Hawaii.", "entities": [
+{"doc_id": "doc-0001", "type": "news", "source": "cnn.com", "text": "Barack Obama ... Hawaii.", "entities": [
   {"type": "PER", "mentions": [{"start": 0, "end": 12}, {"start": 33, "end": 38}]},
   {"type": "LOC", "mentions": [{"start": 25, "end": 31}]}
 ]}
 ```
 
 - `end` is **exclusive** (`text[start:end]`); offsets are **Unicode code points** (matching Python `str`).
+- `type` and `source` are optional **document metadata**: `type` is the kind of text
+  (e.g. `news`, `article`, `social`) and `source` is where it came from (e.g. a site).
+  They drive the per-annotator source-selection screen and are shown as a header while
+  annotating. Missing values are treated as `"unspecified"`. Both are passed through to
+  the output unchanged.
 - `entities` is optional on input (a prediction to refine). Mentions may also be given as `[start, end]` pairs.
 - Mentions may **overlap / nest** (e.g. `LOC` "America" inside `ORG` "Bank of America").
 - An entity may carry an optional **`"uid"`** — a free-form unique identifier (e.g. a Wikidata QID
@@ -37,6 +42,33 @@ Input and output are the same `.jsonl` schema, one record per line:
 
 The output file is written continuously as you annotate. Per-document review status is kept in a
 sidecar `<output>.jsonl.state.json` so the output stays exactly on-schema.
+
+## Multiple annotators
+
+The app is multi-user. On launch it shows a **login screen** asking for an annotator name;
+each annotator's work is stored independently, so signing back in with the same name resumes
+exactly that person's annotations, review status and source selection. The browser remembers
+the last name used, so reopening the app goes straight back to your work. Use **Switch user**
+(top bar) to sign in as someone else.
+
+After logging in, a **source-selection screen** lists every `source` grouped by document `type`
+(with document counts); tick the sources you want to label. Only the selected documents then
+appear in the navigator. The selection is saved per annotator and can be changed any time with
+the **Sources** button. While annotating, the current document's **type and source are shown as
+a header** in the top bar.
+
+Per-user state lives next to the output under `<output>.jsonl.users/`:
+
+```
+<output>.jsonl.users/
+  users.json                 # annotator-name -> on-disk slug registry
+  <slug>.jsonl               # that annotator's annotations (the on-schema output)
+  <slug>.jsonl.state.json    # per-document review status
+  <slug>.prefs.json          # saved source selection
+```
+
+The `--output` path names this location; the plain single-file output described above is the
+per-annotator `<slug>.jsonl` inside it.
 
 ## Run
 
@@ -141,8 +173,9 @@ cd frontend && npm test                # segment tiling + offset/selection logic
 ## Project layout
 
 ```
-backend/ner_annotator/   models.py · store.py · main.py · __main__.py   (FastAPI + file I/O)
+backend/ner_annotator/   models.py · store.py · workspace.py            (per-user file I/O)
+                         main.py · __main__.py                          (FastAPI app + CLI)
 frontend/src/            lib/segments.ts · lib/offsets.ts               (rendering & selection core)
-                         store.ts · api.ts · components/ · hooks/       (UI)
-sample/input.jsonl       example docs: predictions, from-scratch, nested, unicode
+                         store.ts · api.ts · components/ · hooks/       (UI, incl. login + source select)
+sample/input.jsonl       example docs: metadata, predictions, from-scratch, nested, unicode
 ```
