@@ -24,6 +24,16 @@ export const api = {
 
   meta: (user: string) => fetch(`${userBase(user)}/meta`).then((r) => json<Meta>(r)),
 
+  // The tag bank is shared by every annotator, so it isn't user-scoped.
+  tags: () => fetch("/api/tags").then((r) => json<{ tags: string[] }>(r)),
+
+  createTag: (name: string) =>
+    fetch("/api/tags", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).then((r) => json<{ tag: string; tags: string[] }>(r)),
+
   setSelection: (user: string, selection: Selection) =>
     fetch(`${userBase(user)}/selection`, {
       method: "PUT",

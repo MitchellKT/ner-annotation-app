@@ -10,6 +10,7 @@ export interface WireEntity {
   type: string;
   mentions: WireMention[];
   uid?: string; // optional external unique identifier (e.g. a KB / Wikidata id)
+  tags?: string[]; // free-form labels from the shared tag bank; omitted when empty
 }
 
 export type DocStatus = "unreviewed" | "in_progress" | "done";
@@ -65,6 +66,7 @@ export interface Entity {
   type: string;
   mentions: Mention[];
   uid?: string; // optional external unique identifier
+  tags: string[]; // always present client-side; serialized only when non-empty
   reviewed: boolean;
   origin: Origin;
 }

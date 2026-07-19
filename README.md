@@ -33,6 +33,11 @@ Input and output are the same `.jsonl` schema, one record per line:
 - An entity may carry an optional **`"uid"`** — a free-form unique identifier (e.g. a Wikidata QID
   or knowledge-base key): `{"type": "PER", "uid": "Q76", "mentions": [...]}`. It is omitted from
   the output when unset, so files without ids keep the original schema.
+- An entity may carry **`"tags"`** — a list of free-form labels shared between annotators:
+  `{"type": "PER", "mentions": [...], "tags": ["politician", "צבאי"]}`. Tags are taken verbatim
+  (any script; only surrounding whitespace is trimmed) and compared exactly, so `NATO` and `nato`
+  are different tags. Like `uid`, the field is omitted when empty, so files without tags keep the
+  original schema.
 - A mention may be **non-continuous**: a single mention made of several disjoint *fragments*,
   written as `{"fragments": [{"start": ..., "end": ...}, ...]}` in place of `{"start", "end"}`.
   E.g. in *"Annie and George Washington"*, the mention "Annie Washington" is
@@ -130,6 +135,7 @@ shows the live `1 PER · 2 LOC · …` legend so you always know which number is
 | `Tab` / `Shift+Tab` | Cycle the active entity |
 | `Del` / `Backspace` | Delete the hovered mention |
 | `r` | Confirm / unconfirm the active entity |
+| `t` | Tag the active entity (pick from the shared tag bank or create a new tag) |
 | `A` | Accept all (confirm every entity) |
 | `m` | Merge: press `m`, then click another entity (or drag card onto card) |
 | `s` | Split the hovered mention into its own entity |
@@ -152,6 +158,18 @@ to annotating only the selected span.
 unique identifier (e.g. `Q76`). Press `Enter` to save it or `Esc` to skip — it never blocks the
 flow. The id shows as a badge on the entity card; click the badge (or the card's `id` button)
 to add or edit it later. Ids are saved as the entity's `"uid"` field in the output.
+
+**Tags.** Each entity can carry any number of tags. Press `t` (or the 🏷 button on the card) to
+open the tag picker: one free-form field filters the tag bank as you type, and when what you typed
+isn't in the bank yet, the last option creates it. Picked tags appear as chips on the card —
+click a chip's `×` to remove it from the entity (the tag stays in the bank for reuse). Enter adds
+the highlighted option and keeps the dialog open, so several tags go on in a row; `Esc` closes it.
+
+The **tag bank is shared by all annotators**: it lives in `<output>.jsonl.users/tags.json` and is
+the union of tags created through the UI and every tag already present in the corpus or in any
+annotator's output — so a tag one annotator introduces is immediately suggestible to the others,
+and importing pre-tagged annotations seeds the bank automatically. Tags are saved as the entity's
+`"tags"` field in the output.
 
 **Non-continuous mentions.** To annotate e.g. "Annie Washington" in *"Annie and George
 Washington"*: select "Annie", press its type digit (a new entity + mention), then select

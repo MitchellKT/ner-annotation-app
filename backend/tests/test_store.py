@@ -145,6 +145,62 @@ def test_entity_uid_round_trip(tmp_path):
     assert Store(inp, out).get_doc("d1")["entities"][0]["uid"] == "Q42"
 
 
+def test_entity_tags_round_trip_and_normalize(tmp_path):
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [{"doc_id": "d1", "text": "Alice met Bob.", "entities": [
+        {"type": "PER", "mentions": [{"start": 0, "end": 5}], "tags": ["fictional", "lead"]},
+    ]}])
+    store = Store(inp, out)
+    assert store.get_doc("d1")["entities"][0]["tags"] == ["fictional", "lead"]
+
+    # Blank/whitespace tags are dropped, exact duplicates collapse, order kept,
+    # case is preserved (so "NATO" and "nato" stay distinct), any script is ok.
+    store.save_doc("d1", [
+        {"type": "PER", "mentions": [{"start": 0, "end": 5}],
+         "tags": ["  לוחם  ", "", "NATO", "nato", "לוחם", "   "]},
+        {"type": "PER", "mentions": [{"start": 10, "end": 13}]},  # untagged
+    ], status="done")
+    rec = json.loads(out.read_text(encoding="utf-8").strip().splitlines()[0])
+    assert rec["entities"][0]["tags"] == ["לוחם", "NATO", "nato"]
+    # Untagged entities keep the original shape — no empty "tags" key.
+    assert "tags" not in rec["entities"][1]
+
+    # Resume keeps the tags.
+    assert Store(inp, out).get_doc("d1")["entities"][0]["tags"] == ["לוחם", "NATO", "nato"]
+
+
+def test_tag_bank_is_shared_across_users_and_persists(tmp_path):
+    from ner_annotator.workspace import Workspace
+
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [{"doc_id": "d1", "text": "Alice met Bob.", "entities": [
+        {"type": "PER", "mentions": [{"start": 0, "end": 5}], "tags": ["from-input"]},
+    ]}])
+    ws = Workspace(inp, out)
+    # Tags already present in the corpus seed the bank.
+    assert ws.tags() == ["from-input"]
+
+    # A tag one annotator applies becomes visible to the others.
+    ws.get_user("Alice").save_doc(
+        "d1",
+        [{"type": "PER", "mentions": [{"start": 0, "end": 5}], "tags": ["by-alice"]}],
+        status="done",
+    )
+    assert ws.tags() == ["by-alice", "from-input"]
+
+    # Explicitly created tags survive even though no entity uses them.
+    assert ws.add_tag("  unused-tag  ") == "unused-tag"
+    with pytest.raises(ValueError):
+        ws.add_tag("   ")
+
+    # A restart reloads the bank, including Alice's tag (she hasn't logged in
+    # yet, so her store is only created lazily — the bank is seeded from files).
+    ws2 = Workspace(inp, out)
+    assert ws2.tags() == ["by-alice", "from-input", "unused-tag"]
+
+
 def test_discontinuous_mentions_round_trip(tmp_path):
     inp = tmp_path / "in.jsonl"
     out = tmp_path / "out.jsonl"

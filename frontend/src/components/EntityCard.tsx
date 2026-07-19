@@ -26,6 +26,8 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
   const splitMention = useStore((s) => s.splitMention);
   const setDraggingMention = useStore((s) => s.setDraggingMention);
   const openUidPrompt = useStore((s) => s.openUidPrompt);
+  const openTagPrompt = useStore((s) => s.openTagPrompt);
+  const removeEntityTag = useStore((s) => s.removeEntityTag);
   const setHoverEntity = useStore((s) => s.setHoverEntity);
   const selectionSpan = useStore((s) => s.selectionSpan);
   const addMention = useStore((s) => s.addMention);
@@ -153,6 +155,17 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
             </button>
           )}
           <button
+            className={"icon-btn" + (entity.tags.length ? " on-tag" : "")}
+            title={
+              entity.tags.length
+                ? `tags: ${entity.tags.join(", ")} — click to edit (t)`
+                : "add tags (t)"
+            }
+            onClick={() => openTagPrompt(entity.id)}
+          >
+            🏷
+          </button>
+          <button
             className={"icon-btn" + (entity.reviewed ? " on" : "")}
             title="confirm / unconfirm (r)"
             onClick={() => toggleReviewed(entity.id)}
@@ -186,6 +199,26 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
           />
         ))}
       </div>
+
+      {entity.tags.length > 0 && (
+        <div className="tag-list card" onClick={(e) => e.stopPropagation()}>
+          <span className="tag-icon" title="tags">
+            🏷
+          </span>
+          {entity.tags.map((t) => (
+            <span key={t} className="tag-chip">
+              <bdi>{t}</bdi>
+              <span
+                className="x"
+                title={`remove tag ${t}`}
+                onClick={() => removeEntityTag(entity.id, t)}
+              >
+                ×
+              </span>
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

@@ -21,7 +21,7 @@ import os
 import tempfile
 import threading
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Callable, Dict, Iterable, List, Optional, Set
 
 from .models import CANONICAL_TYPES, Doc, Entity, Fragment, Mention, merge_fragments
 
@@ -47,6 +47,10 @@ def _entity_to_json(entity: Entity) -> dict:
     }
     if entity.uid is not None:
         out["uid"] = entity.uid
+    # Like ``uid``: only written when set, so untagged entities keep the
+    # original on-disk shape.
+    if entity.tags:
+        out["tags"] = list(entity.tags)
     return out
 
 
@@ -58,7 +62,11 @@ class Store:
         state_path: Optional[os.PathLike | str] = None,
         types: Optional[List[str]] = None,
         prefs_path: Optional[os.PathLike | str] = None,
+        tag_sink: Optional[Callable[[Iterable[str]], None]] = None,
     ) -> None:
+        # Called with every tag this store sees (at load, and on each save) so a
+        # workspace-wide bank can grow from tags already present in the files.
+        self._tag_sink = tag_sink
         self.input_path = Path(input_path)
         self.output_path = Path(output_path)
         self.state_path = (
@@ -124,6 +132,7 @@ class Store:
         self._merge_output()
         self._load_state()
         self._load_prefs()
+        self._publish_tags()
 
     def _merge_output(self) -> None:
         if not self.output_path.exists():
@@ -212,8 +221,28 @@ class Store:
                 seen.add(key)
                 mentions.append(Mention(fragments=fragments))
             if mentions:
-                cleaned.append(Entity(type=entity.type, mentions=mentions, uid=entity.uid))
+                cleaned.append(
+                    Entity(
+                        type=entity.type,
+                        mentions=mentions,
+                        uid=entity.uid,
+                        tags=list(entity.tags),
+                    )
+                )
         return cleaned
+
+    def used_tags(self) -> Set[str]:
+        """Every tag appearing on a current annotation or an input prediction."""
+        tags: Set[str] = set()
+        for d in self.docs.values():
+            for key in ("entities", "prediction"):
+                for entity in d[key]:
+                    tags.update(entity.tags)
+        return tags
+
+    def _publish_tags(self) -> None:
+        if self._tag_sink is not None:
+            self._tag_sink(self.used_tags())
 
     # ------------------------------------------------------------------- read
     def config(self) -> dict:
@@ -292,6 +321,10 @@ class Store:
             if status in VALID_STATUSES:
                 self.status[doc_id] = status
             self._flush()
+            # Tags applied here join the shared bank, so a tag one annotator
+            # uses becomes suggestible to the others.
+            if self._tag_sink is not None:
+                self._tag_sink({t for e in d["entities"] for t in e.tags})
             return self._summary(doc_id)
 
     def _flush(self) -> None:
