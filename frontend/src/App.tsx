@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useStore } from "./store";
 import { useKeyboard } from "./hooks/useKeyboard";
 import { TopBar } from "./components/TopBar";
@@ -13,7 +13,6 @@ import { cpSlice } from "./lib/offsets";
 import { colorForType } from "./colors";
 
 export default function App() {
-  const init = useStore((s) => s.init);
   const phase = useStore((s) => s.phase);
   const loading = useStore((s) => s.loading);
   const error = useStore((s) => s.error);
@@ -31,10 +30,6 @@ export default function App() {
 
   const [showHelp, setShowHelp] = useState(false);
   useKeyboard(() => setShowHelp((v) => !v));
-
-  useEffect(() => {
-    void init();
-  }, [init]);
 
   const activeIdx = entities.findIndex((e) => e.id === activeEntityId);
   const selPreview = selectionSpan ? cpSlice(cps, selectionSpan.start, selectionSpan.end) : "";

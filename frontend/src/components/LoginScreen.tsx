@@ -2,9 +2,10 @@ import { useState } from "react";
 import { useStore } from "../store";
 
 /**
- * First screen: pick the annotator. The username scopes all annotations and
- * the source selection server-side, so signing back in with the same name
- * reloads exactly that person's work.
+ * First screen, always shown on open: pick the annotator. The username scopes
+ * all annotations and the source selection server-side, so signing back in
+ * with the same name reloads exactly that person's work. The field starts
+ * empty every time — each session names its annotator explicitly.
  */
 export function LoginScreen() {
   const login = useStore((s) => s.login);

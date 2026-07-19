@@ -45,14 +45,17 @@ sidecar `<output>.jsonl.state.json` so the output stays exactly on-schema.
 
 ## Multiple annotators
 
-The app is multi-user. On launch it shows a **login screen** asking for an annotator name;
-each annotator's work is stored independently, so signing back in with the same name resumes
-exactly that person's annotations, review status and source selection. The browser remembers
-the last name used, so reopening the app goes straight back to your work. Use **Switch user**
-(top bar) to sign in as someone else.
+The app is multi-user. The **login screen** is always the entry point — every time the app is
+opened it asks for an annotator name, starting from an empty field, so a shared browser never
+silently resumes as whoever used it last. Each annotator's work is stored independently, so
+signing back in with the same name resumes exactly that person's annotations, review status and
+source selection. Use **Switch user** (top bar) to sign in as someone else.
 
 After logging in, a **source-selection screen** lists every `source` grouped by document `type`
-(with document counts); tick the sources you want to label. Only the selected documents then
+(with document counts); tick the sources you want to label. **All sources start selected**, so
+annotating everything just means clicking through. Long source lists stay manageable: they flow
+into multiple columns, type headers stick while scrolling, and a filter box narrows the list
+(with the bulk select/clear button then acting on just the matches). Only the selected documents then
 appear in the navigator. The selection is saved per annotator and can be changed any time with
 the **Sources** button. While annotating, the current document's **type and source are shown as
 a header** in the top bar.

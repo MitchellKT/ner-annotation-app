@@ -78,8 +78,6 @@ export type SaveState = "idle" | "saving" | "saved" | "error";
 // App phase: pick an annotator, choose which sources to label, then annotate.
 export type Phase = "login" | "select" | "annotate";
 
-const USERNAME_KEY = "ner:username";
-
 /** True if the selection picks at least one source. */
 export function hasSelection(sel: Selection | null | undefined): boolean {
   return !!sel && Object.values(sel).some((sources) => sources.length > 0);
@@ -124,7 +122,6 @@ interface State {
   redoStack: Snapshot[];
 
   // lifecycle
-  init: () => Promise<void>;
   login: (username: string) => Promise<void>;
   logout: () => void;
   saveSelection: (selection: Selection) => Promise<void>;
@@ -283,22 +280,11 @@ export const useStore = create<State>((set, get) => {
     undoStack: [],
     redoStack: [],
 
-    async init() {
-      // Resume the last annotator on this browser, if any, so reopening the
-      // app reloads their work without a fresh login.
-      const remembered =
-        typeof localStorage !== "undefined" ? localStorage.getItem(USERNAME_KEY) : null;
-      if (remembered) {
-        await get().login(remembered);
-      }
-    },
-
     async login(rawName: string) {
       const username = rawName.trim();
       if (!username) return;
       set({ loading: true, error: null, username });
       try {
-        if (typeof localStorage !== "undefined") localStorage.setItem(USERNAME_KEY, username);
         const [config, meta] = await Promise.all([api.config(), api.meta(username)]);
         set({ config, meta });
         if (hasSelection(meta.selection)) {
@@ -314,7 +300,6 @@ export const useStore = create<State>((set, get) => {
 
     logout() {
       flushSave();
-      if (typeof localStorage !== "undefined") localStorage.removeItem(USERNAME_KEY);
       set({
         phase: "login",
         username: null,
