@@ -343,6 +343,86 @@ def test_workspace_slug_collisions_stay_distinct(tmp_path):
     assert b.get_doc("d1")["entities"] == []
 
 
+def test_doc_sink_mirrors_saves_and_backfills(tmp_path):
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [
+        {"doc_id": "d1", "text": "Alice met Bob."},
+        {"doc_id": "d2", "text": "Another doc."},
+    ])
+    batches = []
+    store = Store(inp, out, doc_sink=batches.append)
+
+    # Loading alone publishes nothing — only saves and an explicit sync do.
+    assert batches == []
+
+    store.save_doc("d1", [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}], status="done")
+    # A save mirrors just that doc, in the output schema plus its status.
+    assert batches == [[{
+        "doc_id": "d1",
+        "text": "Alice met Bob.",
+        "entities": [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}],
+        "status": "done",
+    }]]
+
+    # The mirrored record matches the .jsonl line it accompanies.
+    line = json.loads(out.read_text(encoding="utf-8").strip().splitlines()[0])
+    assert {k: v for k, v in batches[0][0].items() if k != "status"} == line
+
+    # sync_all backfills every doc, annotated or not.
+    batches.clear()
+    store.sync_all()
+    assert [r["doc_id"] for r in batches[0]] == ["d1", "d2"]
+    assert batches[0][1]["status"] == "unreviewed"
+
+
+def test_workspace_mirrors_per_annotator(tmp_path):
+    from ner_annotator.workspace import Workspace
+
+    class FakeExporter:
+        def __init__(self):
+            self.calls = []
+
+        def export(self, annotator, records):
+            self.calls.append((annotator, [r["doc_id"] for r in records]))
+            return True
+
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [{"doc_id": "d1", "text": "Alice met Bob."}])
+
+    exporter = FakeExporter()
+    ws = Workspace(inp, out, exporter=exporter)
+    # The read-only corpus store is never mirrored; only user stores are.
+    assert exporter.calls == []
+
+    alice = ws.get_user("Alice")
+    # Opening a user backfills their existing output.
+    assert exporter.calls == [("Alice", ["d1"])]
+
+    exporter.calls.clear()
+    alice.save_doc("d1", [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}], status="done")
+    ws.get_user("Bob").save_doc("d1", [{"type": "LOC", "mentions": [{"start": 10, "end": 13}]}],
+                                status="in_progress")
+    # Each annotator's records are tagged with their own name.
+    assert exporter.calls == [("Alice", ["d1"]), ("Bob", ["d1"]), ("Bob", ["d1"])]
+
+
+def test_workspace_without_exporter_does_not_mirror(tmp_path):
+    from ner_annotator.workspace import Workspace
+
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [{"doc_id": "d1", "text": "x"}])
+    ws = Workspace(inp, out)
+    store = ws.get_user("Alice")
+    assert store._doc_sink is None
+    # Saving still works exactly as before.
+    store.save_doc("d1", [{"type": "PER", "mentions": [{"start": 0, "end": 1}]}], status="done")
+    assert json.loads(out.with_name(out.name + ".users").joinpath("Alice.jsonl").read_text(
+        encoding="utf-8").strip())["entities"][0]["type"] == "PER"
+
+
 def test_mention_rejects_bad_order():
     with pytest.raises(Exception):
         Mention.model_validate({"start": 5, "end": 5})

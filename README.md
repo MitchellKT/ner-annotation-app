@@ -109,6 +109,35 @@ The first nine types map to the digit keys `1`–`9` in the UI; any beyond that 
 selectable from each entity card's type dropdown. Types are free-form strings — predictions
 loaded from `--input` may use labels outside this set and will still import.
 
+### Exporting to MongoDB
+
+Pass `--mongo-uri` to **also** mirror annotations into MongoDB. The `.jsonl` files stay the source
+of truth and are written exactly as before; the database is a queryable copy that is kept up to
+date as people annotate.
+
+```bash
+pip install -e ".[mongo]"        # pymongo is only needed for this
+python -m ner_annotator -i in.jsonl -o out.jsonl --types PER,LOC \
+  --mongo-uri mongodb://localhost:27017 \
+  --mongo-db ner_annotator --mongo-collection annotations   # both optional; these are the defaults
+```
+
+One document per (annotator, `doc_id`), keyed so repeated saves update in place:
+
+```json
+{"_id": "Alice:doc-0001", "annotator": "Alice", "doc_id": "doc-0001",
+ "text": "Barack Obama was born in Hawaii.", "status": "done",
+ "entities": [{"type": "PER", "mentions": [{"start": 0, "end": 12}], "uid": "Q76"}],
+ "updated_at": "2026-07-19T11:56:17.267Z"}
+```
+
+`entities` is byte-for-byte the JSON of the matching `.jsonl` line, plus the review `status`
+(which on disk lives in the state sidecar) and the annotator's name. Signing in backfills that
+annotator's whole output, so annotations made before the mirror was switched on are included.
+
+Export is best-effort: if MongoDB is unreachable the app still runs and still writes `.jsonl`,
+logging the failure once. Restarting with the same `--mongo-uri` re-syncs everyone as they log in.
+
 ### Development (hot reload)
 
 ```bash
@@ -195,6 +224,7 @@ cd frontend && npm test                # segment tiling + offset/selection logic
 
 ```
 backend/ner_annotator/   models.py · store.py · workspace.py            (per-user file I/O)
+                         mongo.py                                       (optional MongoDB mirror)
                          main.py · __main__.py                          (FastAPI app + CLI)
 frontend/src/            lib/segments.ts · lib/offsets.ts               (rendering & selection core)
                          store.ts · api.ts · components/ · hooks/       (UI, incl. login + source select)
