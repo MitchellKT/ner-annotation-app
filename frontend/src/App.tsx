@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useStore } from "./store";
 import { useKeyboard } from "./hooks/useKeyboard";
 import { TopBar } from "./components/TopBar";
@@ -7,11 +7,13 @@ import { TextPanel } from "./components/TextPanel";
 import { EntityPanel } from "./components/EntityPanel";
 import { KeyboardHelp } from "./components/KeyboardHelp";
 import { UidPrompt } from "./components/UidPrompt";
+import { LoginScreen } from "./components/LoginScreen";
+import { SourceSelector } from "./components/SourceSelector";
 import { cpSlice } from "./lib/offsets";
 import { colorForType } from "./colors";
 
 export default function App() {
-  const init = useStore((s) => s.init);
+  const phase = useStore((s) => s.phase);
   const loading = useStore((s) => s.loading);
   const error = useStore((s) => s.error);
   const docId = useStore((s) => s.docId);
@@ -29,12 +31,11 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   useKeyboard(() => setShowHelp((v) => !v));
 
-  useEffect(() => {
-    void init();
-  }, [init]);
-
   const activeIdx = entities.findIndex((e) => e.id === activeEntityId);
   const selPreview = selectionSpan ? cpSlice(cps, selectionSpan.start, selectionSpan.end) : "";
+
+  if (phase === "login") return <LoginScreen />;
+  if (phase === "select") return <SourceSelector />;
 
   return (
     <div className="app">

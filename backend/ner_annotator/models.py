@@ -123,8 +123,21 @@ class Doc(BaseModel):
     doc_id: str
     text: str
     entities: List[Entity] = []
+    # Optional document metadata: ``type`` is the kind of text (e.g. "news",
+    # "article") and ``source`` is where it came from (e.g. a site). Both are
+    # free strings; missing values are surfaced as "unspecified" by the store.
+    type: Optional[str] = None
+    source: Optional[str] = None
 
     @field_validator("doc_id", mode="before")
     @classmethod
     def _stringify_id(cls, value: Any) -> Any:
         return str(value) if value is not None else value
+
+    @field_validator("type", "source", mode="before")
+    @classmethod
+    def _normalize_meta(cls, value: Any) -> Any:
+        if value is None:
+            return None
+        value = str(value).strip()
+        return value or None

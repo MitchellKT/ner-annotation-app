@@ -3,12 +3,16 @@
 Exposes the annotation API under ``/api`` and (in production) serves the built
 SPA from ``frontend/dist``. During development the Vite dev server runs
 separately and proxies ``/api`` here.
+
+The API is multi-user: annotation/selection endpoints are scoped to a username
+(``/api/users/{username}/…``) so each annotator keeps their own state, while
+``/api/config`` stays corpus-wide.
 """
 
 from __future__ import annotations
 
 from pathlib import Path
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -17,11 +21,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from .store import Store
-
-
-class EntityIn(BaseModel):
-    type: str
-    mentions: List[dict]
+from .workspace import Workspace
 
 
 class SaveRequest(BaseModel):
@@ -29,8 +29,13 @@ class SaveRequest(BaseModel):
     status: str = "in_progress"
 
 
-def create_app(store: Store, static_dir: Optional[Path] = None) -> FastAPI:
-    app = FastAPI(title="NER Entity Annotator", version="0.1.0")
+class SelectionRequest(BaseModel):
+    # doc-type -> [selected sources]
+    selection: Dict[str, List[str]] = {}
+
+
+def create_app(workspace: Workspace, static_dir: Optional[Path] = None) -> FastAPI:
+    app = FastAPI(title="NER Entity Annotator", version="0.2.0")
 
     # Dev convenience: Vite dev server on another port may call the API directly.
     app.add_middleware(
@@ -40,27 +45,45 @@ def create_app(store: Store, static_dir: Optional[Path] = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    def _user(username: str) -> Store:
+        try:
+            return workspace.get_user(username)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+
     @app.get("/api/config")
     def get_config() -> dict:
-        return {**store.config(), "warnings": store.warnings}
+        return workspace.config()
 
-    @app.get("/api/docs")
-    def list_docs() -> List[dict]:
-        return store.summaries()
+    @app.get("/api/users/{username}/meta")
+    def get_meta(username: str) -> dict:
+        store = _user(username)
+        md = workspace.metadata()
+        md["selection"] = store.selection
+        return md
 
-    @app.get("/api/docs/{doc_id}")
-    def get_doc(doc_id: str) -> dict:
-        doc = store.get_doc(doc_id)
+    @app.put("/api/users/{username}/selection")
+    def set_selection(username: str, req: SelectionRequest) -> dict:
+        store = _user(username)
+        return {"selection": store.set_selection(req.selection)}
+
+    @app.get("/api/users/{username}/docs")
+    def list_docs(username: str) -> List[dict]:
+        return _user(username).summaries()
+
+    @app.get("/api/users/{username}/docs/{doc_id}")
+    def get_doc(username: str, doc_id: str) -> dict:
+        doc = _user(username).get_doc(doc_id)
         if doc is None:
             raise HTTPException(status_code=404, detail=f"unknown doc_id {doc_id!r}")
         return doc
 
     # PUT for normal saves; POST alias so navigator.sendBeacon (POST-only) works on unload.
-    @app.put("/api/docs/{doc_id}")
-    @app.post("/api/docs/{doc_id}")
-    def save_doc(doc_id: str, req: SaveRequest) -> dict:
+    @app.put("/api/users/{username}/docs/{doc_id}")
+    @app.post("/api/users/{username}/docs/{doc_id}")
+    def save_doc(username: str, doc_id: str, req: SaveRequest) -> dict:
         try:
-            return store.save_doc(doc_id, req.entities, req.status)
+            return _user(username).save_doc(doc_id, req.entities, req.status)
         except KeyError:
             raise HTTPException(status_code=404, detail=f"unknown doc_id {doc_id!r}")
 

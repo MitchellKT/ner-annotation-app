@@ -17,6 +17,8 @@ export type DocStatus = "unreviewed" | "in_progress" | "done";
 export interface DocSummary {
   doc_id: string;
   index: number;
+  type: string;
+  source: string;
   status: DocStatus;
   n_entities: number;
   n_mentions: number;
@@ -26,6 +28,8 @@ export interface DocSummary {
 export interface DocData {
   doc_id: string;
   index: number;
+  type: string;
+  source: string;
   text: string;
   status: DocStatus;
   entities: WireEntity[];
@@ -35,6 +39,16 @@ export interface DocData {
 export interface AppConfig {
   types: string[];
   warnings: string[];
+}
+
+// doc-type -> selected sources
+export type Selection = Record<string, string[]>;
+
+// Corpus metadata + this user's saved selection (source-selection screen).
+export interface Meta {
+  sourcesByType: Record<string, string[]>;
+  counts: Record<string, Record<string, number>>;
+  selection: Selection | null;
 }
 
 // ---- Client-side model (stable ids; origin/reviewed are session-only) ----

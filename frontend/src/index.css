@@ -186,3 +186,68 @@ kbd {
 
 .banner { padding: 8px 14px; background: #fff7ed; border-bottom: 1px solid #f3d8a8; color: #92400e; font-size: 13px; }
 .center-msg { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); }
+
+/* ---- document type / source header ---- */
+.meta-header { display: inline-flex; align-items: center; gap: 6px; }
+.meta-chip { font-size: 12px; padding: 2px 9px; border-radius: 99px; border: 1px solid var(--border-strong); }
+.meta-chip.type { background: var(--accent-soft); border-color: #c7dbfb; color: #1d4fd7; font-weight: 600; }
+.meta-chip.source { background: #f3f5f8; color: var(--text); }
+.meta-sep { color: var(--border-strong); }
+
+/* ---- user box in the top bar ---- */
+.user-box { display: inline-flex; align-items: center; gap: 8px; }
+.user-name { font-size: 12px; color: var(--muted); font-weight: 600; }
+
+/* ---- login / selection gate screens ---- */
+.gate { min-height: 100%; display: flex; align-items: center; justify-content: center; padding: 32px 16px; background: var(--bg); }
+.gate-wide { align-items: flex-start; }
+.gate-card {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 14px;
+  box-shadow: 0 12px 40px rgba(16,24,40,0.12); padding: 28px 30px; width: 420px; max-width: 100%;
+  display: flex; flex-direction: column; gap: 10px;
+}
+.gate-title { margin: 0; font-size: 22px; letter-spacing: -0.3px; }
+.gate-sub { margin: 0 0 6px; color: var(--muted); font-size: 13px; }
+.gate-label { font-size: 12px; font-weight: 600; }
+.gate-input {
+  font: inherit; font-size: 15px; padding: 9px 11px; border-radius: 8px;
+  border: 1px solid var(--border-strong); outline: none; width: 100%;
+}
+.gate-input:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37,99,235,0.18); }
+.gate-btn { margin-top: 6px; padding: 9px; font-size: 15px; }
+.gate-error { color: var(--danger); font-size: 13px; }
+
+/* ---- source selection screen ---- */
+.select-card { width: min(1040px, 100%); max-height: 88vh; }
+.select-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+
+/* filter + bulk toggle, shown once there are enough sources to be worth it */
+.select-tools { display: flex; align-items: center; gap: 10px; }
+.select-filter {
+  font: inherit; font-size: 13px; padding: 7px 10px; border-radius: 8px; flex: 1; min-width: 0;
+  border: 1px solid var(--border-strong); outline: none;
+}
+.select-filter:focus { border-color: var(--accent); box-shadow: 0 0 0 2px rgba(37,99,235,0.18); }
+.select-tally { font-size: 12px; color: var(--muted); white-space: nowrap; }
+
+.select-body { overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 6px 2px; }
+.select-group { border: 1px solid var(--border); border-radius: 10px; padding: 0 14px 12px; }
+/* sticks while scrolling so you always know which type you're checking off */
+.select-group-head {
+  display: flex; align-items: center; gap: 10px; padding: 12px 0 10px;
+  position: sticky; top: 0; z-index: 1; background: var(--panel);
+  border-bottom: 1px solid var(--border); margin-bottom: 10px;
+}
+.select-type { font-weight: 700; font-size: 14px; }
+.select-type-count { font-size: 12px; color: var(--muted); }
+.select-all-btn { margin-left: auto; font-size: 12px; padding: 2px 10px; }
+/* flow into as many columns as fit, so 30 sources stay on one screen */
+.select-sources { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2px 12px; }
+.select-source {
+  display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 6px;
+  border-radius: 6px; cursor: pointer; min-width: 0;
+}
+.select-source:hover { background: #f5f7f9; }
+.select-source-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-source-count { font-size: 11px; color: var(--muted); background: #eef1f4; border-radius: 99px; padding: 1px 8px; }
+.select-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--border); padding-top: 14px; margin-top: 4px; }

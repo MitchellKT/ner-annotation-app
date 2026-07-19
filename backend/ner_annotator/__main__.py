@@ -9,7 +9,7 @@ from pathlib import Path
 import uvicorn
 
 from .main import create_app
-from .store import Store
+from .workspace import Workspace
 
 # frontend/dist relative to the repo root (backend/ner_annotator/__main__.py -> repo root)
 DEFAULT_STATIC = Path(__file__).resolve().parents[2] / "frontend" / "dist"
@@ -37,19 +37,19 @@ def main() -> None:
         parser.error("--types must list at least one non-empty entity type")
 
     static_dir = Path(args.static) if args.static else DEFAULT_STATIC
-    store = Store(args.input, args.output, types=types)
+    workspace = Workspace(args.input, args.output, types=types)
 
-    if store.warnings:
-        print(f"[ner_annotator] {len(store.warnings)} load warning(s):")
-        for w in store.warnings[:20]:
+    if workspace.warnings:
+        print(f"[ner_annotator] {len(workspace.warnings)} load warning(s):")
+        for w in workspace.warnings[:20]:
             print(f"  - {w}")
 
-    app = create_app(store, static_dir=static_dir)
+    app = create_app(workspace, static_dir=static_dir)
 
     url = f"http://{args.host}:{args.port}/"
-    print(f"[ner_annotator] {len(store.order)} docs loaded from {args.input}")
-    print(f"[ner_annotator] entity types: {', '.join(store.types)}")
-    print(f"[ner_annotator] writing annotations to {args.output}")
+    print(f"[ner_annotator] {workspace.n_docs} docs loaded from {args.input}")
+    print(f"[ner_annotator] entity types: {', '.join(workspace.corpus.types)}")
+    print(f"[ner_annotator] per-user annotations under {workspace.users_root}")
     print(f"[ner_annotator] serving at {url}")
     if not args.no_open and static_dir.exists():
         try:

@@ -7,7 +7,9 @@ import type {
   DocSummary,
   Entity,
   Mention,
+  Meta,
   Origin,
+  Selection,
   WireEntity,
 } from "./types";
 import { toCodePoints } from "./lib/offsets";
@@ -73,6 +75,14 @@ function dedupeMentions(mentions: Mention[]): Mention[] {
 // ---- store ---------------------------------------------------------------
 export type SaveState = "idle" | "saving" | "saved" | "error";
 
+// App phase: pick an annotator, choose which sources to label, then annotate.
+export type Phase = "login" | "select" | "annotate";
+
+/** True if the selection picks at least one source. */
+export function hasSelection(sel: Selection | null | undefined): boolean {
+  return !!sel && Object.values(sel).some((sources) => sources.length > 0);
+}
+
 interface Snapshot {
   entities: Entity[];
   status: DocStatus;
@@ -84,6 +94,11 @@ interface State {
   summaries: DocSummary[];
   loading: boolean;
   error: string | null;
+
+  // multi-user
+  phase: Phase;
+  username: string | null;
+  meta: Meta | null;
 
   docId: string | null;
   text: string;
@@ -107,7 +122,10 @@ interface State {
   redoStack: Snapshot[];
 
   // lifecycle
-  init: () => Promise<void>;
+  login: (username: string) => Promise<void>;
+  logout: () => void;
+  saveSelection: (selection: Selection) => Promise<void>;
+  openSelection: () => void;
   refreshSummaries: () => Promise<void>;
   loadDoc: (docId: string) => Promise<void>;
   gotoIndex: (index: number) => void;
@@ -197,9 +215,9 @@ export const useStore = create<State>((set, get) => {
 
   async function doSave() {
     const s = get();
-    if (!s.docId) return;
+    if (!s.docId || !s.username) return;
     try {
-      const summary = await api.saveDoc(s.docId, toWire(s.entities), s.status);
+      const summary = await api.saveDoc(s.username, s.docId, toWire(s.entities), s.status);
       set({
         saveState: "saved",
         summaries: get().summaries.map((d) => (d.doc_id === summary.doc_id ? summary : d)),
@@ -217,11 +235,29 @@ export const useStore = create<State>((set, get) => {
     void doSave();
   }
 
+  /** Load the current user's (selection-filtered) docs and open the first one. */
+  async function loadDocsAndStart() {
+    const user = get().username;
+    if (!user) return;
+    const summaries = await api.listDocs(user);
+    set({ summaries, phase: "annotate", loading: false });
+    const first = summaries.find((d) => d.status !== "done") ?? summaries[0];
+    if (first) {
+      await get().loadDoc(first.doc_id);
+    } else {
+      set({ docId: null });
+    }
+  }
+
   return {
     config: null,
     summaries: [],
     loading: false,
     error: null,
+
+    phase: "login",
+    username: null,
+    meta: null,
 
     docId: null,
     text: "",
@@ -244,26 +280,72 @@ export const useStore = create<State>((set, get) => {
     undoStack: [],
     redoStack: [],
 
-    async init() {
-      set({ loading: true });
+    async login(rawName: string) {
+      const username = rawName.trim();
+      if (!username) return;
+      set({ loading: true, error: null, username });
       try {
-        const [config, summaries] = await Promise.all([api.config(), api.listDocs()]);
-        set({ config, summaries, loading: false });
-        const first = summaries.find((d) => d.status !== "done") ?? summaries[0];
-        if (first) await get().loadDoc(first.doc_id);
+        const [config, meta] = await Promise.all([api.config(), api.meta(username)]);
+        set({ config, meta });
+        if (hasSelection(meta.selection)) {
+          // Returning annotator with a saved selection: straight to annotating.
+          await loadDocsAndStart();
+        } else {
+          set({ phase: "select", loading: false });
+        }
+      } catch (e) {
+        set({ error: String(e), loading: false, phase: "login" });
+      }
+    },
+
+    logout() {
+      flushSave();
+      set({
+        phase: "login",
+        username: null,
+        meta: null,
+        config: null,
+        summaries: [],
+        docId: null,
+        text: "",
+        cps: [],
+        prediction: [],
+        entities: [],
+        activeEntityId: null,
+        error: null,
+        loading: false,
+      });
+    },
+
+    async saveSelection(selection: Selection) {
+      const s = get();
+      if (!s.username) return;
+      set({ loading: true, error: null });
+      try {
+        const { selection: saved } = await api.setSelection(s.username, selection);
+        set({ meta: s.meta ? { ...s.meta, selection: saved } : s.meta });
+        await loadDocsAndStart();
       } catch (e) {
         set({ error: String(e), loading: false });
       }
     },
 
+    openSelection() {
+      flushSave();
+      set({ phase: "select" });
+    },
+
     async refreshSummaries() {
-      set({ summaries: await api.listDocs() });
+      const user = get().username;
+      if (user) set({ summaries: await api.listDocs(user) });
     },
 
     async loadDoc(docId: string) {
+      const user = get().username;
+      if (!user) return;
       flushSave(); // persist the doc we're leaving
       try {
-        const doc = await api.getDoc(docId);
+        const doc = await api.getDoc(user, docId);
         const entities = toClientEntities(doc);
         set({
           docId: doc.doc_id,
@@ -529,6 +611,8 @@ export const useStore = create<State>((set, get) => {
       const fakeDoc: DocData = {
         doc_id: s.docId ?? "",
         index: 0,
+        type: "",
+        source: "",
         text: s.text,
         status: "unreviewed",
         entities: s.prediction,
@@ -579,8 +663,8 @@ function cloneEntities(entities: Entity[]): Entity[] {
 if (typeof window !== "undefined") {
   window.addEventListener("beforeunload", () => {
     const s = useStore.getState();
-    if (s.docId && s.saveState !== "saved") {
-      beaconSave(s.docId, toWire(s.entities), s.status);
+    if (s.username && s.docId && s.saveState !== "saved") {
+      beaconSave(s.username, s.docId, toWire(s.entities), s.status);
     }
   });
 }
