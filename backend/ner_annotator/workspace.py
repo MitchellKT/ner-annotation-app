@@ -17,6 +17,9 @@ warnings, the type→sources map for the selection screen) without needing a use
 Entity *tags* are the one annotation-side thing that is deliberately shared: the
 :class:`TagBank` is workspace-wide, so a tag any annotator creates or uses is
 offered to all of them.
+
+If a :class:`~ner_annotator.mongo.MongoExporter` is supplied, every user store
+also mirrors its saves into MongoDB, tagged with that annotator's name.
 """
 
 from __future__ import annotations
@@ -25,9 +28,12 @@ import json
 import re
 import threading
 from pathlib import Path
-from typing import Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Dict, Iterable, List, Optional
 
 from .store import Store
+
+if TYPE_CHECKING:  # pragma: no cover - pymongo is an optional dependency
+    from .mongo import MongoExporter
 
 _SLUG_RE = re.compile(r"[^A-Za-z0-9_-]+")
 
@@ -100,10 +106,13 @@ class Workspace:
         input_path,
         output_path,
         types: Optional[List[str]] = None,
+        exporter: Optional["MongoExporter"] = None,
     ) -> None:
         self.input_path = Path(input_path)
         self.output_path = Path(output_path)
         self.types = list(types) if types else None
+        # Optional mirror of every user's output; None disables MongoDB export.
+        self.exporter = exporter
         # Per-user files live alongside the output, under "<output>.users/".
         self.users_root = self.output_path.with_name(self.output_path.name + ".users")
         self._registry_path = self.users_root / "users.json"
@@ -202,9 +211,21 @@ class Workspace:
                 prefs_path=self.users_root / f"{slug}.prefs.json",
                 types=self.types,
                 tag_sink=self.tag_bank.add_many,
+                doc_sink=self._doc_sink_for(username),
             )
             self._users[username] = store
+            # Backfill: the store just resumed this user's existing .jsonl, which
+            # may hold annotations made before the mirror existed.
+            if self.exporter is not None:
+                store.sync_all()
             return store
+
+    def _doc_sink_for(self, username: str):
+        """Bind the shared exporter to one annotator, or None when disabled."""
+        if self.exporter is None:
+            return None
+        exporter = self.exporter
+        return lambda records: exporter.export(username, records)
 
     def known_users(self) -> List[str]:
         with self._lock:

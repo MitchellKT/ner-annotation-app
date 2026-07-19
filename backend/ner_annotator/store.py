@@ -12,6 +12,9 @@ Lifecycle:
 * Saves overwrite the current annotation and rewrite ``output.jsonl`` atomically
   (temp file + ``os.replace``). Offsets are sanitised against the text length and
   empty entities are pruned.
+* An optional ``doc_sink`` is handed the same records after they reach disk, so
+  a mirror (e.g. MongoDB) can follow along without the file ever stopping being
+  the source of truth.
 """
 
 from __future__ import annotations
@@ -63,10 +66,14 @@ class Store:
         types: Optional[List[str]] = None,
         prefs_path: Optional[os.PathLike | str] = None,
         tag_sink: Optional[Callable[[Iterable[str]], None]] = None,
+        doc_sink: Optional[Callable[[List[dict]], None]] = None,
     ) -> None:
         # Called with every tag this store sees (at load, and on each save) so a
         # workspace-wide bank can grow from tags already present in the files.
         self._tag_sink = tag_sink
+        # Called with saved records *after* they are on disk, for mirrors that
+        # shadow the output file. Never called with an empty list.
+        self._doc_sink = doc_sink
         self.input_path = Path(input_path)
         self.output_path = Path(output_path)
         self.state_path = (
@@ -325,21 +332,41 @@ class Store:
             # uses becomes suggestible to the others.
             if self._tag_sink is not None:
                 self._tag_sink({t for e in d["entities"] for t in e.tags})
+            self._publish_docs([doc_id])
             return self._summary(doc_id)
+
+    def sync_all(self) -> None:
+        """Push every document to the ``doc_sink``.
+
+        Used to backfill a mirror when this store is opened, so annotations made
+        while the mirror was off (or unreachable) are not left behind.
+        """
+        with self._lock:
+            self._publish_docs(self.order)
+
+    def _publish_docs(self, doc_ids: List[str]) -> None:
+        if self._doc_sink is None or not doc_ids:
+            return
+        # Status is not part of the on-schema output line, but a mirror has no
+        # sidecar to read it from, so it travels with the record.
+        self._doc_sink(
+            [{**self._record(doc_id), "status": self.status[doc_id]} for doc_id in doc_ids]
+        )
+
+    def _record(self, doc_id: str) -> dict:
+        """One document in the on-disk output schema."""
+        d = self.docs[doc_id]
+        return {
+            "doc_id": doc_id,
+            "text": d["text"],
+            "entities": [_entity_to_json(e) for e in d["entities"]],
+        }
 
     def _flush(self) -> None:
         self._atomic_write(
             self.output_path,
             "".join(
-                json.dumps(
-                    {
-                        "doc_id": doc_id,
-                        "text": self.docs[doc_id]["text"],
-                        "entities": [_entity_to_json(e) for e in self.docs[doc_id]["entities"]],
-                    },
-                    ensure_ascii=False,
-                )
-                + "\n"
+                json.dumps(self._record(doc_id), ensure_ascii=False) + "\n"
                 for doc_id in self.order
             ),
         )
