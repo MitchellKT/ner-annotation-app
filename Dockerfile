@@ -14,7 +14,8 @@ WORKDIR /app
 
 COPY backend/pyproject.toml backend/uv.lock ./backend/
 COPY backend/ner_annotator ./backend/ner_annotator
-RUN pip install --no-cache-dir ./backend
+# Install with the "mongo" extra so pymongo is present for --mongo-uri exports.
+RUN pip install --no-cache-dir "./backend[mongo]"
 
 COPY --from=frontend /app/frontend/dist ./frontend/dist
 
