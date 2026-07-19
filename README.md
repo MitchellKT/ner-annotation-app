@@ -16,17 +16,18 @@ It is built for two workflows, both optimised for minimal time per document:
 Input and output are the same `.jsonl` schema, one record per line:
 
 ```json
-{"doc_id": "doc-0001", "type": "news", "source": "cnn.com", "text": "Barack Obama ... Hawaii.", "entities": [
+{"doc_id": "doc-0001", "type": "news", "category": "print", "source": "cnn.com", "text": "Barack Obama ... Hawaii.", "entities": [
   {"type": "PER", "mentions": [{"start": 0, "end": 12}, {"start": 33, "end": 38}]},
   {"type": "LOC", "mentions": [{"start": 25, "end": 31}]}
 ]}
 ```
 
 - `end` is **exclusive** (`text[start:end]`); offsets are **Unicode code points** (matching Python `str`).
-- `type` and `source` are optional **document metadata**: `type` is the kind of text
-  (e.g. `news`, `article`, `social`) and `source` is where it came from (e.g. a site).
+- `type`, `category` and `source` are optional **document metadata** forming a three-level
+  hierarchy: `type` is the kind of text (e.g. `news`, `social`), `category` groups sources
+  within a type (e.g. `print`, `broadcast`), and `source` is where it came from (e.g. a site).
   They drive the per-annotator source-selection screen and are shown as a header while
-  annotating. Missing values are treated as `"unspecified"`. Both are passed through to
+  annotating. Missing values are treated as `"unspecified"`. All three are passed through to
   the output unchanged.
 - `entities` is optional on input (a prediction to refine). Mentions may also be given as `[start, end]` pairs.
 - Mentions may **overlap / nest** (e.g. `LOC` "America" inside `ORG` "Bank of America").
@@ -57,13 +58,15 @@ signing back in with the same name resumes exactly that person's annotations, re
 source selection. Use **Switch user** (top bar) to sign in as someone else.
 
 After logging in, a **source-selection screen** lists every `source` grouped by document `type`
-(with document counts); tick the sources you want to label. **All sources start selected**, so
-annotating everything just means clicking through. Long source lists stay manageable: they flow
-into multiple columns, type headers stick while scrolling, and a filter box narrows the list
-(with the bulk select/clear button then acting on just the matches). Only the selected documents then
-appear in the navigator. The selection is saved per annotator and can be changed any time with
-the **Sources** button. While annotating, the current document's **type and source are shown as
-a header** in the top bar.
+and, within each type, by `category`. Each category is a **collapsible dropdown** (collapsed by
+default); open one to reveal its sources, or tick the category's checkbox to select every source
+under it at once. **All sources start selected**, so annotating everything just means clicking
+through. Long lists stay manageable: sources flow into multiple columns, type headers stick while
+scrolling, and a filter box narrows the list — auto-expanding the categories that still have
+matches, with the bulk select/clear button then acting on just those matches. Only the selected
+documents then appear in the navigator. The selection is saved per annotator and can be changed
+any time with the **Sources** button. While annotating, the current document's **type, category
+and source are shown as a header** in the top bar.
 
 Per-user state lives next to the output under `<output>.jsonl.users/`:
 

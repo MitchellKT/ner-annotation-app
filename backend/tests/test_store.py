@@ -245,17 +245,23 @@ def test_metadata_groups_sources_by_type_with_counts(tmp_path):
     inp = tmp_path / "in.jsonl"
     out = tmp_path / "out.jsonl"
     write_jsonl(inp, [
-        {"doc_id": "d1", "text": "a", "type": "news", "source": "cnn.com"},
-        {"doc_id": "d2", "text": "b", "type": "news", "source": "cnn.com"},
-        {"doc_id": "d3", "text": "c", "type": "news", "source": "bbc.com"},
-        {"doc_id": "d4", "text": "d", "type": "article", "source": "medium.com"},
-        {"doc_id": "d5", "text": "e"},  # no metadata -> unspecified/unspecified
+        {"doc_id": "d1", "text": "a", "type": "news", "category": "print", "source": "cnn.com"},
+        {"doc_id": "d2", "text": "b", "type": "news", "category": "print", "source": "cnn.com"},
+        {"doc_id": "d3", "text": "c", "type": "news", "category": "wire", "source": "bbc.com"},
+        {"doc_id": "d4", "text": "d", "type": "article", "category": "blog", "source": "medium.com"},
+        {"doc_id": "d5", "text": "e"},  # no metadata -> unspecified/unspecified/unspecified
     ])
     md = Store(inp, out).metadata()
     assert md["sourcesByType"] == {
         "news": ["bbc.com", "cnn.com"],
         "article": ["medium.com"],
         "unspecified": ["unspecified"],
+    }
+    # Sources are grouped under their category, one level below the type.
+    assert md["categoriesByType"] == {
+        "news": {"print": ["cnn.com"], "wire": ["bbc.com"]},
+        "article": {"blog": ["medium.com"]},
+        "unspecified": {"unspecified": ["unspecified"]},
     }
     assert md["counts"]["news"] == {"cnn.com": 2, "bbc.com": 1}
     assert md["selection"] is None
@@ -288,9 +294,12 @@ def test_selection_filters_summaries_and_persists(tmp_path):
 def test_get_doc_includes_metadata(tmp_path):
     inp = tmp_path / "in.jsonl"
     out = tmp_path / "out.jsonl"
-    write_jsonl(inp, [{"doc_id": "d1", "text": "hi", "type": "News", "source": " CNN "}])
+    write_jsonl(inp, [
+        {"doc_id": "d1", "text": "hi", "type": "News", "category": " Print ", "source": " CNN "}
+    ])
     doc = Store(inp, out).get_doc("d1")
     assert doc["type"] == "News"
+    assert doc["category"] == "Print"  # trimmed
     assert doc["source"] == "CNN"  # trimmed
 
 

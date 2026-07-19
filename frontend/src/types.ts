@@ -19,6 +19,7 @@ export interface DocSummary {
   doc_id: string;
   index: number;
   type: string;
+  category: string;
   source: string;
   status: DocStatus;
   n_entities: number;
@@ -30,6 +31,7 @@ export interface DocData {
   doc_id: string;
   index: number;
   type: string;
+  category: string;
   source: string;
   text: string;
   status: DocStatus;
@@ -42,12 +44,15 @@ export interface AppConfig {
   warnings: string[];
 }
 
-// doc-type -> selected sources
+// doc-type -> selected sources. A category is only a display grouping of the
+// sources it contains, so the selection stays keyed by (type, source).
 export type Selection = Record<string, string[]>;
 
 // Corpus metadata + this user's saved selection (source-selection screen).
 export interface Meta {
   sourcesByType: Record<string, string[]>;
+  // type -> category -> sources: the grouping shown on the selection screen.
+  categoriesByType: Record<string, Record<string, string[]>>;
   counts: Record<string, Record<string, number>>;
   selection: Selection | null;
 }

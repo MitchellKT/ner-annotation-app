@@ -130,6 +130,7 @@ class Store:
                 self.docs[doc.doc_id] = {
                     "text": doc.text,
                     "type": doc.type or UNSPECIFIED,
+                    "category": doc.category or UNSPECIFIED,
                     "source": doc.source or UNSPECIFIED,
                     "prediction": pred,
                     "entities": [e.model_copy(deep=True) for e in pred],
@@ -256,18 +257,32 @@ class Store:
         return {"types": list(self.types)}
 
     def metadata(self) -> dict:
-        """Document metadata for the source-selection screen: the sources
-        available under each doc ``type`` (sorted) plus per-(type, source)
-        document counts, and this user's saved ``selection`` (if any)."""
+        """Document metadata for the source-selection screen.
+
+        Describes the three-level ``type`` → ``category`` → ``source`` hierarchy:
+        ``sourcesByType`` lists the sources under each type (sorted),
+        ``categoriesByType`` groups those sources by category, ``counts`` holds
+        per-(type, source) document counts, and ``selection`` is this user's
+        saved picks (if any). Selection stays keyed by (type, source); a category
+        is just a display grouping of the sources it contains."""
         with self._lock:
             counts: Dict[str, Dict[str, int]] = {}
+            # type -> category -> set(sources)
+            grouped: Dict[str, Dict[str, set]] = {}
             for doc_id in self.order:
                 d = self.docs[doc_id]
-                counts.setdefault(d["type"], {})
-                counts[d["type"]][d["source"]] = counts[d["type"]].get(d["source"], 0) + 1
+                t, c, s = d["type"], d["category"], d["source"]
+                counts.setdefault(t, {})
+                counts[t][s] = counts[t].get(s, 0) + 1
+                grouped.setdefault(t, {}).setdefault(c, set()).add(s)
             sources_by_type = {t: sorted(srcs) for t, srcs in counts.items()}
+            categories_by_type = {
+                t: {c: sorted(srcs) for c, srcs in sorted(cats.items())}
+                for t, cats in grouped.items()
+            }
             return {
                 "sourcesByType": sources_by_type,
+                "categoriesByType": categories_by_type,
                 "counts": counts,
                 "selection": self.selection,
             }
@@ -294,6 +309,7 @@ class Store:
             "doc_id": doc_id,
             "index": self.index[doc_id],
             "type": d["type"],
+            "category": d["category"],
             "source": d["source"],
             "status": self.status[doc_id],
             "n_entities": len(d["entities"]),
@@ -310,6 +326,7 @@ class Store:
                 "doc_id": doc_id,
                 "index": self.index[doc_id],
                 "type": d["type"],
+                "category": d["category"],
                 "source": d["source"],
                 "text": d["text"],
                 "status": self.status[doc_id],
