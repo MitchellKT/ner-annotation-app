@@ -13,6 +13,11 @@ non-overlapping *fragments*, which makes non-continuous mentions expressible
     {"type": "PER", "mentions": [{"fragments": [{"start": 0, "end": 5},
                                                 {"start": 17, "end": 27}]}]}
 
+An entity may also carry ``uid`` (an external identifier) and ``tags`` (free-form
+labels shared between annotators via the workspace tag bank)::
+
+    {"type": "PER", "mentions": [{"start": 0, "end": 5}], "tags": ["fictional"]}
+
 The loader is tolerant: a continuous mention may be given as ``{"start","end"}``
 or a ``[start, end]`` pair (fragments accept the pair form too), and ``type`` is
 accepted as a free string so model/LLM predictions with non-canonical labels
@@ -102,11 +107,37 @@ class Entity(BaseModel):
     # Optional external unique identifier for the entity (e.g. a Wikidata QID
     # or knowledge-base key). Omitted from the output when not set.
     uid: Optional[str] = None
+    # Free-form labels drawn from the workspace-wide tag bank. Tags are taken
+    # verbatim (any script — Hebrew, Arabic, emoji — is fine); only surrounding
+    # whitespace is trimmed. Omitted from the output when empty.
+    tags: List[str] = []
 
     @field_validator("type", mode="before")
     @classmethod
     def _stringify_type(cls, value: Any) -> Any:
         return str(value) if value is not None else value
+
+    @field_validator("tags", mode="before")
+    @classmethod
+    def _normalize_tags(cls, value: Any) -> Any:
+        if value is None:
+            return []
+        # A bare string is accepted as a one-tag list.
+        if isinstance(value, str):
+            value = [value]
+        if not isinstance(value, (list, tuple)):
+            raise ValueError("tags must be a list of strings")
+        out: List[str] = []
+        seen = set()
+        for tag in value:
+            name = str(tag).strip()
+            # Blank tags are meaningless; exact duplicates collapse. Case is
+            # preserved and significant, so "NATO" and "nato" stay distinct.
+            if not name or name in seen:
+                continue
+            seen.add(name)
+            out.append(name)
+        return out
 
     @field_validator("uid", mode="before")
     @classmethod

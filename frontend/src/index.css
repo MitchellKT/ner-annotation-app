@@ -134,6 +134,8 @@ kbd {
 .ecard-actions { margin-left: auto; display: flex; gap: 3px; }
 .icon-btn { padding: 2px 6px; font-size: 12px; line-height: 1.2; border-radius: 5px; }
 .icon-btn.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+/* The entity carries tags — tint the 🏷 button without hiding the glyph. */
+.icon-btn.on-tag { background: var(--accent-soft); border-color: #c7dbfb; }
 
 .mentions { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 7px; }
 .chip {
@@ -181,6 +183,31 @@ kbd {
   max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .uid-badge:hover { border-color: var(--accent); }
+
+/* ---- entity tags ---- */
+.tag-list { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+/* On a card the tags sit under the mention chips, separated by a hairline. */
+.tag-list.card { margin-top: 7px; padding-top: 6px; border-top: 1px dashed var(--border); }
+.tag-icon { font-size: 11px; opacity: 0.65; }
+.tag-chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 11px; padding: 1px 7px; border-radius: 99px;
+  background: var(--accent-soft); border: 1px solid #c7dbfb; color: #1d4fd7;
+  max-width: 100%; overflow-wrap: anywhere;
+}
+.tag-chip .x { color: #6b8ec9; cursor: pointer; font-weight: 700; }
+.tag-chip .x:hover { color: var(--danger); }
+
+.tag-card { width: 460px; }
+/* Cap the suggestion list so a large bank scrolls instead of growing the dialog. */
+.tag-options { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; }
+.tag-option {
+  text-align: start; font: inherit; font-size: 13px; padding: 5px 9px;
+  border: 1px solid transparent; border-radius: 6px; background: none; cursor: pointer;
+}
+.tag-option.active { background: var(--accent-soft); border-color: #c7dbfb; }
+.tag-option.create { color: var(--accent); font-weight: 600; }
+.tag-empty { font-size: 12px; color: var(--muted); padding: 4px 2px; }
 .help-grid .k { text-align: right; }
 .help-section { margin-top: 16px; font-weight: 700; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; }
 

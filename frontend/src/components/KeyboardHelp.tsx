@@ -22,6 +22,7 @@ export function KeyboardHelp({ onClose }: { onClose: () => void }) {
     ["click highlight", "Make that entity active"],
     ["Del / Backspace", "Delete the hovered mention"],
     ["r", "Confirm / unconfirm the active entity"],
+    ["t", "Tag the active entity (pick from the shared tag bank or create a new tag)"],
     ["A", "Accept all (confirm every entity)"],
     ["m", "Merge: press m, then click another entity (or drag card onto card)"],
     ["s", "Split the hovered mention into its own entity"],

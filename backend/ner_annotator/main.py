@@ -34,6 +34,10 @@ class SelectionRequest(BaseModel):
     selection: Dict[str, List[str]] = {}
 
 
+class TagRequest(BaseModel):
+    name: str
+
+
 def create_app(workspace: Workspace, static_dir: Optional[Path] = None) -> FastAPI:
     app = FastAPI(title="NER Entity Annotator", version="0.2.0")
 
@@ -54,6 +58,19 @@ def create_app(workspace: Workspace, static_dir: Optional[Path] = None) -> FastA
     @app.get("/api/config")
     def get_config() -> dict:
         return workspace.config()
+
+    # The tag bank is shared by all annotators, so these are not user-scoped.
+    @app.get("/api/tags")
+    def get_tags() -> dict:
+        return {"tags": workspace.tags()}
+
+    @app.post("/api/tags")
+    def add_tag(req: TagRequest) -> dict:
+        try:
+            tag = workspace.add_tag(req.name)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"tag": tag, "tags": workspace.tags()}
 
     @app.get("/api/users/{username}/meta")
     def get_meta(username: str) -> dict:

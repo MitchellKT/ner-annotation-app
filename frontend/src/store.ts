@@ -21,9 +21,15 @@ let _uid = 0;
 const uid = (prefix: string) => `${prefix}${++_uid}`;
 
 // ---- wire <-> client conversion ----------------------------------------
-function signature(e: { type: string; uid?: string; mentions: WireMention[] }): string {
+function signature(e: {
+  type: string;
+  uid?: string;
+  tags?: string[];
+  mentions: WireMention[];
+}): string {
   const spans = e.mentions.map((m) => fragmentsKey(wireFragments(m))).sort().join(",");
-  return `${e.type}|${e.uid ?? ""}|${spans}`;
+  const tags = [...(e.tags ?? [])].sort().join("");
+  return `${e.type}|${e.uid ?? ""}|${tags}|${spans}`;
 }
 
 function toClientEntities(doc: DocData): Entity[] {
@@ -42,6 +48,7 @@ function toClientEntities(doc: DocData): Entity[] {
         fragments: wireFragments(m).map((f) => ({ start: f.start, end: f.end })),
       })),
       uid: e.uid,
+      tags: e.tags ?? [],
       reviewed: allReviewed || origin === "user",
       origin,
     };
@@ -55,6 +62,7 @@ function toWire(entities: Entity[]): WireEntity[] {
       type: e.type,
       mentions: e.mentions.map((m) => toWireMention(m.fragments)),
       ...(e.uid ? { uid: e.uid } : {}),
+      ...(e.tags.length ? { tags: e.tags } : {}),
     }));
 }
 
@@ -99,6 +107,7 @@ interface State {
   phase: Phase;
   username: string | null;
   meta: Meta | null;
+  tagBank: string[]; // shared vocabulary of entity tags (sorted)
 
   docId: string | null;
   text: string;
@@ -113,6 +122,7 @@ interface State {
   pendingMergeId: string | null; // first entity chosen for a merge
   draggingMention: { mentionId: string; fromId: string } | null; // mention chip currently being dragged
   uidPromptEntityId: string | null; // entity whose unique-id prompt is open
+  tagPromptEntityId: string | null; // entity whose tag picker is open
   selectionSpan: { start: number; end: number } | null; // current normalized text selection
   scrollTo: { start: number; nonce: number } | null; // request TextPanel to scroll/flash a span
   autoMatch: boolean; // propagate a new mention to identical text elsewhere
@@ -147,6 +157,9 @@ interface State {
   cancelMerge: () => void;
   openUidPrompt: (entityId: string) => void;
   closeUidPrompt: () => void;
+  openTagPrompt: (entityId: string) => void;
+  closeTagPrompt: () => void;
+  loadTags: () => Promise<void>;
 
   // mutations
   createEntity: (type: string, span: { start: number; end: number }) => void;
@@ -158,6 +171,8 @@ interface State {
   reassignMention: (mentionId: string, fromId: string, toId: string) => void;
   setEntityType: (entityId: string, type: string) => void;
   setEntityUid: (entityId: string, uid: string | undefined) => void;
+  addEntityTag: (entityId: string, tag: string) => void;
+  removeEntityTag: (entityId: string, tag: string) => void;
   deleteEntity: (entityId: string) => void;
   mergeEntities: (aId: string, bId: string) => void;
   splitMention: (entityId: string, mentionId: string) => void;
@@ -258,6 +273,7 @@ export const useStore = create<State>((set, get) => {
     phase: "login",
     username: null,
     meta: null,
+    tagBank: [],
 
     docId: null,
     text: "",
@@ -272,6 +288,7 @@ export const useStore = create<State>((set, get) => {
     pendingMergeId: null,
     draggingMention: null,
     uidPromptEntityId: null,
+    tagPromptEntityId: null,
     selectionSpan: null,
     scrollTo: null,
     autoMatch: false,
@@ -285,8 +302,12 @@ export const useStore = create<State>((set, get) => {
       if (!username) return;
       set({ loading: true, error: null, username });
       try {
-        const [config, meta] = await Promise.all([api.config(), api.meta(username)]);
-        set({ config, meta });
+        const [config, meta, { tags }] = await Promise.all([
+          api.config(),
+          api.meta(username),
+          api.tags(),
+        ]);
+        set({ config, meta, tagBank: tags });
         if (hasSelection(meta.selection)) {
           // Returning annotator with a saved selection: straight to annotating.
           await loadDocsAndStart();
@@ -304,6 +325,7 @@ export const useStore = create<State>((set, get) => {
         phase: "login",
         username: null,
         meta: null,
+        tagBank: [],
         config: null,
         summaries: [],
         docId: null,
@@ -360,6 +382,7 @@ export const useStore = create<State>((set, get) => {
           pendingMergeId: null,
           draggingMention: null,
           uidPromptEntityId: null,
+          tagPromptEntityId: null,
           selectionSpan: null,
           undoStack: [],
           redoStack: [],
@@ -413,6 +436,24 @@ export const useStore = create<State>((set, get) => {
     openUidPrompt: (entityId) => set({ uidPromptEntityId: entityId }),
     closeUidPrompt: () => set({ uidPromptEntityId: null }),
 
+    openTagPrompt(entityId) {
+      set({ tagPromptEntityId: entityId });
+      // Refresh in the background: another annotator may have added tags since
+      // login, and the picker should offer them.
+      void get().loadTags();
+    },
+    closeTagPrompt: () => set({ tagPromptEntityId: null }),
+
+    async loadTags() {
+      try {
+        const { tags } = await api.tags();
+        set({ tagBank: tags });
+      } catch {
+        // Non-fatal: the picker still works off the tags we already know, and
+        // tags reach the bank anyway when the document is saved.
+      }
+    },
+
     createEntity(type, span) {
       const id = uid("e");
       const entity: Entity = {
@@ -421,6 +462,7 @@ export const useStore = create<State>((set, get) => {
         mentions: dedupeMentions(
           expandSpan(span).map((sp) => ({ id: uid("m"), fragments: [{ start: sp.start, end: sp.end }] }))
         ),
+        tags: [],
         reviewed: true,
         origin: "user",
       };
@@ -493,6 +535,7 @@ export const useStore = create<State>((set, get) => {
         id,
         type: get().config?.types[0] ?? "PER",
         mentions: [],
+        tags: [],
         reviewed: true,
         origin: "user",
       };
@@ -538,6 +581,40 @@ export const useStore = create<State>((set, get) => {
       );
     },
 
+    addEntityTag(entityId, rawTag) {
+      // Any script is fine; only surrounding whitespace is stripped.
+      const tag = rawTag.trim();
+      if (!tag) return;
+      mutate((entities) =>
+        entities.map((e) =>
+          e.id === entityId && !e.tags.includes(tag)
+            ? { ...e, tags: [...e.tags, tag], reviewed: true }
+            : e
+        )
+      );
+      // Publish to the shared bank right away so other annotators can pick it
+      // up without waiting for this document to be saved.
+      if (!get().tagBank.includes(tag)) {
+        set({ tagBank: [...get().tagBank, tag].sort() });
+        void api
+          .createTag(tag)
+          .then(({ tags }) => set({ tagBank: tags }))
+          .catch(() => {
+            // Non-fatal: the tag is applied locally either way, and the save
+            // that follows seeds it into the bank server-side.
+          });
+      }
+    },
+
+    removeEntityTag(entityId, tag) {
+      // Only unlinks the tag from this entity; the bank keeps it for reuse.
+      mutate((entities) =>
+        entities.map((e) =>
+          e.id === entityId ? { ...e, tags: e.tags.filter((t) => t !== tag), reviewed: true } : e
+        )
+      );
+    },
+
     deleteEntity(entityId) {
       const s = get();
       const remaining = s.entities.filter((e) => e.id !== entityId);
@@ -555,7 +632,13 @@ export const useStore = create<State>((set, get) => {
         return entities
           .map((e) =>
             e.id === aId
-              ? { ...e, mentions: dedupeMentions([...a.mentions, ...b.mentions]), reviewed: true }
+              ? {
+                  ...e,
+                  mentions: dedupeMentions([...a.mentions, ...b.mentions]),
+                  // Union, so a merge never silently drops the other's tags.
+                  tags: [...a.tags, ...b.tags.filter((t) => !a.tags.includes(t))],
+                  reviewed: true,
+                }
               : e
           )
           .filter((e) => e.id !== bId);
@@ -573,6 +656,8 @@ export const useStore = create<State>((set, get) => {
           id: newId,
           type: src.type,
           mentions: [m],
+          // The split-off entity inherits the source's classification.
+          tags: [...src.tags],
           reviewed: true,
           origin: "user",
         };
@@ -655,6 +740,7 @@ export const useStore = create<State>((set, get) => {
 function cloneEntities(entities: Entity[]): Entity[] {
   return entities.map((e) => ({
     ...e,
+    tags: [...e.tags],
     mentions: e.mentions.map((m) => ({ ...m, fragments: m.fragments.map((f) => ({ ...f })) })),
   }));
 }

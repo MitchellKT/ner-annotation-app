@@ -69,6 +69,12 @@ export function useKeyboard(toggleHelp: () => void) {
             s.toggleReviewed(s.activeEntityId);
           }
           return;
+        case "t":
+          if (s.activeEntityId) {
+            e.preventDefault();
+            s.openTagPrompt(s.activeEntityId);
+          }
+          return;
         case "m":
           if (s.activeEntityId) {
             e.preventDefault();
