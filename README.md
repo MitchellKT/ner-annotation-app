@@ -140,7 +140,7 @@ shows the live `1 PER · 2 LOC · …` legend so you always know which number is
 | `←` / `→` | Previous / next document |
 | `?` | Toggle the shortcut help |
 
-**Auto-annotate repeats.** With the *auto-annotate repeats* checkbox (text toolbar, on by
+**Auto-annotate repeats.** With the *auto-annotate repeats* checkbox (text toolbar, off by
 default), annotating a mention also annotates every other identical occurrence of that text in
 the document — like walking Ctrl+F matches, but case-sensitive and in one keystroke. This applies
 both to creating an entity (digit keys) and to adding a mention to an existing entity (clicking

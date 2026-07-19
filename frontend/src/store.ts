@@ -274,7 +274,7 @@ export const useStore = create<State>((set, get) => {
     uidPromptEntityId: null,
     selectionSpan: null,
     scrollTo: null,
-    autoMatch: true,
+    autoMatch: false,
     saveState: "idle",
 
     undoStack: [],
