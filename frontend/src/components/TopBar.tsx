@@ -31,8 +31,10 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
       <span className="docid">{docId ?? "—"}</span>
       {idx >= 0 && <span style={{ color: "var(--muted)", fontSize: 12 }}>#{idx + 1}/{total}</span>}
       {doc && (
-        <span className="meta-header" title="document type · source">
+        <span className="meta-header" title="document type · category · source">
           <span className="meta-chip type">{doc.type}</span>
+          <span className="meta-sep">·</span>
+          <span className="meta-chip category">{doc.category}</span>
           <span className="meta-sep">·</span>
           <span className="meta-chip source">{doc.source}</span>
         </span>

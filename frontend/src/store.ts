@@ -747,6 +747,7 @@ export const useStore = create<State>((set, get) => {
         doc_id: s.docId ?? "",
         index: 0,
         type: "",
+        category: "",
         source: "",
         text: s.text,
         status: "unreviewed",

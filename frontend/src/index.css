@@ -250,6 +250,7 @@ kbd {
 .meta-header { display: inline-flex; align-items: center; gap: 6px; }
 .meta-chip { font-size: 12px; padding: 2px 9px; border-radius: 99px; border: 1px solid var(--border-strong); }
 .meta-chip.type { background: var(--accent-soft); border-color: #c7dbfb; color: #1d4fd7; font-weight: 600; }
+.meta-chip.category { background: #eef7f0; border-color: #c6e6cf; color: #1c7a3f; }
 .meta-chip.source { background: #f3f5f8; color: var(--text); }
 .meta-sep { color: var(--border-strong); }
 
@@ -300,8 +301,25 @@ kbd {
 .select-type { font-weight: 700; font-size: 14px; }
 .select-type-count { font-size: 12px; color: var(--muted); }
 .select-all-btn { margin-left: auto; font-size: 12px; padding: 2px 10px; }
+
+/* ---- category dropdowns (the group level between type and source) ---- */
+.select-categories { display: flex; flex-direction: column; gap: 8px; }
+.select-cat { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.select-cat-head { display: flex; align-items: center; gap: 8px; padding: 0 10px; background: #f7f9fb; }
+.select-cat-check { flex: none; cursor: pointer; }
+/* the clickable header row that expands/collapses the group */
+.select-cat-toggle {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 8px;
+  background: none; border: none; padding: 9px 2px; margin: 0; cursor: pointer;
+  font: inherit; color: var(--text); text-align: left;
+}
+.select-cat-toggle:hover { background: none; }
+.select-cat-chevron { flex: none; color: var(--muted); transition: transform 0.12s ease; font-size: 11px; }
+.select-cat-chevron.open { transform: rotate(90deg); }
+.select-cat-name { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.select-cat-count { margin-left: auto; font-size: 12px; color: var(--muted); white-space: nowrap; }
 /* flow into as many columns as fit, so 30 sources stay on one screen */
-.select-sources { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2px 12px; }
+.select-sources { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 2px 12px; padding: 4px 10px 10px; }
 .select-source {
   display: flex; align-items: center; gap: 8px; font-size: 13px; padding: 4px 6px;
   border-radius: 6px; cursor: pointer; min-width: 0;

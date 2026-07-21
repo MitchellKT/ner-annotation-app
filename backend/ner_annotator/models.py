@@ -208,10 +208,13 @@ class Doc(BaseModel):
     # the workspace keeps one shared thread per document and every annotator's
     # output carries it. Omitted from the output when empty.
     comments: List[Comment] = []
-    # Optional document metadata: ``type`` is the kind of text (e.g. "news",
-    # "article") and ``source`` is where it came from (e.g. a site). Both are
-    # free strings; missing values are surfaced as "unspecified" by the store.
+    # Optional document metadata forming a three-level hierarchy: ``type`` is the
+    # kind of text (e.g. "news"), ``category`` groups sources within a type
+    # (e.g. "print press"), and ``source`` is where it came from (e.g. a site).
+    # All are free strings; missing values are surfaced as "unspecified" by the
+    # store.
     type: Optional[str] = None
+    category: Optional[str] = None
     source: Optional[str] = None
 
     @field_validator("doc_id", mode="before")
@@ -219,7 +222,7 @@ class Doc(BaseModel):
     def _stringify_id(cls, value: Any) -> Any:
         return str(value) if value is not None else value
 
-    @field_validator("type", "source", mode="before")
+    @field_validator("type", "category", "source", mode="before")
     @classmethod
     def _normalize_meta(cls, value: Any) -> Any:
         if value is None:
