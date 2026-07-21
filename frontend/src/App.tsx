@@ -5,6 +5,7 @@ import { TopBar } from "./components/TopBar";
 import { DocNavigator } from "./components/DocNavigator";
 import { TextPanel } from "./components/TextPanel";
 import { EntityPanel } from "./components/EntityPanel";
+import { CommentPanel } from "./components/CommentPanel";
 import { KeyboardHelp } from "./components/KeyboardHelp";
 import { UidPrompt } from "./components/UidPrompt";
 import { TagPrompt } from "./components/TagPrompt";
@@ -88,6 +89,8 @@ export default function App() {
 
         <div className="col-entities">
           <EntityPanel />
+          {/* keyed so a half-written comment doesn't follow you to the next doc */}
+          <CommentPanel key={docId ?? "none"} />
         </div>
       </div>
 

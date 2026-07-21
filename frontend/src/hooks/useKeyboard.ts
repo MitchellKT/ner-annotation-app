@@ -75,6 +75,11 @@ export function useKeyboard(toggleHelp: () => void) {
             s.openTagPrompt(s.activeEntityId);
           }
           return;
+        case "c":
+          // Toggle the shared comment thread; opening focuses its composer.
+          e.preventDefault();
+          s.setCommentsOpen(!s.commentsOpen);
+          return;
         case "m":
           if (s.activeEntityId) {
             e.preventDefault();

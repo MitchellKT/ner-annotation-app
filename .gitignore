@@ -21,11 +21,19 @@ frontend/dist/
 dist/
 
 # ───────────────────────── Runtime annotation data ──────────────────
-# Generated when you run the annotator; this is user data, not source.
-*.state.json
-output.jsonl
-output*.jsonl
-annotations*.jsonl
+# Corpora, annotations, per-user state and the shared tag / comment sidecars
+# are user data, not source. Ignore every .json and .jsonl, then add back the
+# few the repo genuinely needs.
+*.json
+*.jsonl
+
+# The example corpus the quickstart in the README runs on.
+!sample/input.jsonl
+
+# Build configuration — needed to install and build the frontend.
+!frontend/package.json
+!frontend/package-lock.json
+!frontend/tsconfig.json
 
 # ───────────────────────── Editor / OS ──────────────────────────────
 .DS_Store

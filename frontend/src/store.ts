@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { api, beaconSave } from "./api";
 import type {
   AppConfig,
+  Comment,
   DocData,
   DocStatus,
   DocSummary,
@@ -115,6 +116,10 @@ interface State {
   prediction: WireEntity[];
   entities: Entity[];
   status: DocStatus;
+  // The current document's comment thread — shared by every annotator, so it
+  // is refetched rather than edited locally.
+  comments: Comment[];
+  commentsOpen: boolean;
 
   activeEntityId: string | null;
   hoverEntityId: string | null;
@@ -160,6 +165,9 @@ interface State {
   openTagPrompt: (entityId: string) => void;
   closeTagPrompt: () => void;
   loadTags: () => Promise<void>;
+  setCommentsOpen: (open: boolean) => void;
+  loadComments: () => Promise<void>;
+  postComment: (text: string) => Promise<void>;
 
   // mutations
   createEntity: (type: string, span: { start: number; end: number }) => void;
@@ -281,6 +289,8 @@ export const useStore = create<State>((set, get) => {
     prediction: [],
     entities: [],
     status: "unreviewed",
+    comments: [],
+    commentsOpen: false,
 
     activeEntityId: null,
     hoverEntityId: null,
@@ -333,6 +343,8 @@ export const useStore = create<State>((set, get) => {
         cps: [],
         prediction: [],
         entities: [],
+        comments: [],
+        commentsOpen: false,
         activeEntityId: null,
         error: null,
         loading: false,
@@ -376,6 +388,7 @@ export const useStore = create<State>((set, get) => {
           prediction: doc.prediction,
           entities,
           status: doc.status,
+          comments: doc.comments,
           activeEntityId: entities[0]?.id ?? null,
           hoverEntityId: null,
           hoverMentionId: null,
@@ -451,6 +464,43 @@ export const useStore = create<State>((set, get) => {
       } catch {
         // Non-fatal: the picker still works off the tags we already know, and
         // tags reach the bank anyway when the document is saved.
+      }
+    },
+
+    setCommentsOpen(open: boolean) {
+      set({ commentsOpen: open });
+      // Someone else may have commented since this document was opened.
+      if (open) void get().loadComments();
+    },
+
+    async loadComments() {
+      const docId = get().docId;
+      if (!docId) return;
+      try {
+        const { comments } = await api.comments(docId);
+        // Ignore a reply that lost the race with a document change.
+        if (get().docId === docId) set({ comments });
+      } catch {
+        // Non-fatal: the thread loaded with the document is still shown.
+      }
+    },
+
+    async postComment(text: string) {
+      const s = get();
+      const body = text.trim();
+      if (!s.docId || !s.username || !body) return;
+      const docId = s.docId;
+      try {
+        const { comments } = await api.addComment(docId, s.username, body);
+        if (get().docId !== docId) return;
+        set({
+          comments,
+          summaries: get().summaries.map((d) =>
+            d.doc_id === docId ? { ...d, n_comments: comments.length } : d
+          ),
+        });
+      } catch (e) {
+        set({ error: String(e) });
       }
     },
 
@@ -702,6 +752,7 @@ export const useStore = create<State>((set, get) => {
         status: "unreviewed",
         entities: s.prediction,
         prediction: s.prediction,
+        comments: s.comments,
       };
       const entities = toClientEntities(fakeDoc);
       mutate(() => entities, { activeId: entities[0]?.id ?? null });

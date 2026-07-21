@@ -1,5 +1,6 @@
 import type {
   AppConfig,
+  Comment,
   DocData,
   DocSummary,
   DocStatus,
@@ -33,6 +34,18 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     }).then((r) => json<{ tag: string; tags: string[] }>(r)),
+
+  // Document comments are one shared thread per document, like the tag bank —
+  // not user-scoped; the author rides along in the POST body.
+  comments: (docId: string) =>
+    fetch(`/api/docs/${enc(docId)}/comments`).then((r) => json<{ comments: Comment[] }>(r)),
+
+  addComment: (docId: string, author: string, text: string) =>
+    fetch(`/api/docs/${enc(docId)}/comments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ author, text }),
+    }).then((r) => json<{ comments: Comment[] }>(r)),
 
   setSelection: (user: string, selection: Selection) =>
     fetch(`${userBase(user)}/selection`, {

@@ -201,6 +201,87 @@ def test_tag_bank_is_shared_across_users_and_persists(tmp_path):
     assert ws2.tags() == ["by-alice", "from-input", "unused-tag"]
 
 
+def test_comments_are_shared_across_users_and_round_trip(tmp_path):
+    from ner_annotator.workspace import Workspace
+
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [
+        {"doc_id": "d1", "text": "Alice met Bob.",
+         "comments": [{"author": "editor", "text": "from input", "created_at": "2026-01-01T00:00:00Z"}]},
+        {"doc_id": "d2", "text": "Another doc."},
+    ])
+    ws = Workspace(inp, out)
+    # Comments already in the corpus seed the shared thread.
+    assert ws.comments("d1") == [
+        {"author": "editor", "text": "from input", "created_at": "2026-01-01T00:00:00Z"}
+    ]
+    assert ws.comments("d2") == []
+
+    alice = ws.get_user("Alice")
+    bob = ws.get_user("Bob")
+    bob.save_doc("d1", [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}], status="done")
+
+    posted = ws.add_comment("d1", "Alice", "  is Bob a person here?  ")
+    assert [c["author"] for c in posted] == ["editor", "Alice"]
+    assert posted[-1]["text"] == "is Bob a person here?"  # outer whitespace trimmed
+
+    # Everyone reads the same thread, and it reaches each signed-in annotator's
+    # doc payload and summary count.
+    assert alice.get_doc("d1")["comments"] == posted
+    assert bob.get_doc("d1")["comments"] == posted
+    assert [s["n_comments"] for s in bob.summaries()] == [2, 0]
+
+    # A comment posted after Bob saved still lands in his output file (he is
+    # signed in, so his file was rewritten), while d2 stays comment-free.
+    lines = [json.loads(l) for l in
+             out.with_name(out.name + ".users").joinpath("Bob.jsonl").read_text(
+                 encoding="utf-8").strip().splitlines()]
+    assert lines[0]["comments"] == posted
+    assert "comments" not in lines[1]
+
+    with pytest.raises(ValueError):
+        ws.add_comment("d1", "Alice", "   ")
+    with pytest.raises(KeyError):
+        ws.add_comment("nope", "Alice", "hi")
+
+    # A restart reloads the book; deleting the sidecar loses nothing that the
+    # annotators' output files still carry.
+    out.with_name(out.name + ".users").joinpath("comments.json").unlink()
+    assert Workspace(inp, out).comments("d1") == posted
+
+
+def test_comments_reach_the_mirror_and_are_absent_by_default(tmp_path):
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    write_jsonl(inp, [{"doc_id": "d1", "text": "Alice met Bob."}])
+
+    # A bare Store has no comment wiring: nothing appears in the doc or the file.
+    store = Store(inp, out)
+    assert store.get_doc("d1")["comments"] == []
+    store.save_doc("d1", [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}], status="done")
+    assert "comments" not in json.loads(out.read_text(encoding="utf-8").strip())
+
+    from ner_annotator.workspace import Workspace
+
+    class FakeExporter:
+        def __init__(self):
+            self.records = []
+
+        def export(self, annotator, records):
+            self.records.extend(records)
+            return True
+
+    out2 = tmp_path / "mirrored.jsonl"
+    exporter = FakeExporter()
+    ws = Workspace(inp, out2, exporter=exporter)
+    ws.get_user("Alice")
+    exporter.records.clear()
+    ws.add_comment("d1", "Alice", "needs a second pass")
+    # Posting re-publishes the affected doc, so the mirror never lags the file.
+    assert exporter.records[-1]["comments"] == ws.comments("d1")
+
+
 def test_discontinuous_mentions_round_trip(tmp_path):
     inp = tmp_path / "in.jsonl"
     out = tmp_path / "out.jsonl"
@@ -334,10 +415,12 @@ def test_workspace_slug_collisions_stay_distinct(tmp_path):
     out = tmp_path / "out.jsonl"
     write_jsonl(inp, [{"doc_id": "d1", "text": "x"}])
     ws = Workspace(inp, out)
-    # Two names that slugify to the same base must not share files.
+    # Two names that slugify to the same base must not share files — and the
+    # paths have to differ by more than case, since on Windows/macOS
+    # "Jane-Doe.jsonl" and "jane-doe.jsonl" are one and the same file.
     a = ws.get_user("Jane Doe")
     b = ws.get_user("jane/doe")
-    assert a.output_path != b.output_path
+    assert a.output_path.name.casefold() != b.output_path.name.casefold()
 
     a.save_doc("d1", [{"type": "PER", "mentions": [{"start": 0, "end": 1}]}], status="done")
     assert b.get_doc("d1")["entities"] == []

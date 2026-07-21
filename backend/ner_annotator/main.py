@@ -38,6 +38,11 @@ class TagRequest(BaseModel):
     name: str
 
 
+class CommentRequest(BaseModel):
+    author: str
+    text: str
+
+
 def create_app(workspace: Workspace, static_dir: Optional[Path] = None) -> FastAPI:
     app = FastAPI(title="NER Entity Annotator", version="0.2.0")
 
@@ -71,6 +76,25 @@ def create_app(workspace: Workspace, static_dir: Optional[Path] = None) -> FastA
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         return {"tag": tag, "tags": workspace.tags()}
+
+    # Comments belong to the document, not to one annotator: everyone reads the
+    # same thread, so (like the tag bank) these are not user-scoped — the author
+    # travels in the body instead.
+    @app.get("/api/docs/{doc_id}/comments")
+    def get_comments(doc_id: str) -> dict:
+        try:
+            return {"comments": workspace.comments(doc_id)}
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"unknown doc_id {doc_id!r}")
+
+    @app.post("/api/docs/{doc_id}/comments")
+    def add_comment(doc_id: str, req: CommentRequest) -> dict:
+        try:
+            return {"comments": workspace.add_comment(doc_id, req.author, req.text)}
+        except KeyError:
+            raise HTTPException(status_code=404, detail=f"unknown doc_id {doc_id!r}")
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     @app.get("/api/users/{username}/meta")
     def get_meta(username: str) -> dict:

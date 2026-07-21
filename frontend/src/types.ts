@@ -13,6 +13,14 @@ export interface WireEntity {
   tags?: string[]; // free-form labels from the shared tag bank; omitted when empty
 }
 
+// A document-level note. Comments are shared by every annotator, so `author`
+// is the username of whoever wrote it.
+export interface Comment {
+  author: string;
+  text: string;
+  created_at: string; // ISO-8601 UTC, e.g. "2026-07-21T09:12:04Z"
+}
+
 export type DocStatus = "unreviewed" | "in_progress" | "done";
 
 export interface DocSummary {
@@ -23,6 +31,7 @@ export interface DocSummary {
   status: DocStatus;
   n_entities: number;
   n_mentions: number;
+  n_comments: number;
   has_prediction: boolean;
 }
 
@@ -35,6 +44,7 @@ export interface DocData {
   status: DocStatus;
   entities: WireEntity[];
   prediction: WireEntity[];
+  comments: Comment[];
 }
 
 export interface AppConfig {

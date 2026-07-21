@@ -18,6 +18,13 @@ labels shared between annotators via the workspace tag bank)::
 
     {"type": "PER", "mentions": [{"start": 0, "end": 5}], "tags": ["fictional"]}
 
+A document may carry ``comments`` — document-level notes shared between
+annotators, each stamped with its author and the time it was written::
+
+    {"doc_id": "...", "text": "...", "entities": [],
+     "comments": [{"author": "Alice", "text": "unsure about the last sentence",
+                   "created_at": "2026-07-21T09:12:04Z"}]}
+
 The loader is tolerant: a continuous mention may be given as ``{"start","end"}``
 or a ``[start, end]`` pair (fragments accept the pair form too), and ``type`` is
 accepted as a free string so model/LLM predictions with non-canonical labels
@@ -28,6 +35,7 @@ without non-continuous mentions keep the original schema.
 
 from __future__ import annotations
 
+import datetime as _dt
 from typing import Any, List, Optional
 
 from pydantic import BaseModel, ConfigDict, field_validator, model_validator
@@ -35,6 +43,16 @@ from pydantic import BaseModel, ConfigDict, field_validator, model_validator
 # Canonical entity types. ``type`` is stored as a plain string (not a Literal) so
 # that importing predictions never hard-fails on an unexpected label.
 CANONICAL_TYPES = ("PER", "LOC", "ORG", "TIME")
+
+# Author recorded for a comment that arrives without one (e.g. hand-written
+# input), so every comment can be attributed to *something* in the UI.
+UNKNOWN_AUTHOR = "unknown"
+
+
+def utc_now_iso() -> str:
+    """Second-resolution UTC timestamp, e.g. ``2026-07-21T09:12:04Z``."""
+    now = _dt.datetime.now(_dt.timezone.utc).replace(microsecond=0)
+    return now.isoformat().replace("+00:00", "Z")
 
 
 class Fragment(BaseModel):
@@ -148,12 +166,48 @@ class Entity(BaseModel):
         return value or None
 
 
+class Comment(BaseModel):
+    """One document-level note, shared with every annotator.
+
+    ``author`` is the username of whoever wrote it and ``created_at`` an
+    ISO-8601 UTC timestamp; both are filled in when missing so a hand-written
+    ``{"text": "..."}`` still loads.
+    """
+
+    model_config = ConfigDict(extra="ignore")
+
+    author: str = ""
+    text: str
+    created_at: str = ""
+
+    @field_validator("author", "text", "created_at", mode="before")
+    @classmethod
+    def _clean(cls, value: Any) -> Any:
+        # Comment bodies are free-form in any script; only the outer whitespace
+        # goes, so internal line breaks and indentation survive the round-trip.
+        return "" if value is None else str(value).strip()
+
+    @model_validator(mode="after")
+    def _fill_defaults(self) -> "Comment":
+        if not self.text:
+            raise ValueError("comment text must be non-empty")
+        if not self.author:
+            self.author = UNKNOWN_AUTHOR
+        if not self.created_at:
+            self.created_at = utc_now_iso()
+        return self
+
+
 class Doc(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     doc_id: str
     text: str
     entities: List[Entity] = []
+    # Document-level annotator notes. Unlike entities these are *not* per-user:
+    # the workspace keeps one shared thread per document and every annotator's
+    # output carries it. Omitted from the output when empty.
+    comments: List[Comment] = []
     # Optional document metadata: ``type`` is the kind of text (e.g. "news",
     # "article") and ``source`` is where it came from (e.g. a site). Both are
     # free strings; missing values are surfaced as "unspecified" by the store.

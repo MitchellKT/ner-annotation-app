@@ -9,6 +9,9 @@ Lifecycle:
   resumes where it left off.
 * Per-doc review *status* lives in a sidecar ``<output>.state.json`` so the output
   file stays exactly on-schema.
+* Document *comments* are shared by every annotator, so the store does not own
+  them: an optional ``comment_source`` supplies them when reading/writing a
+  record, and an optional ``comment_sink`` receives the ones found in the files.
 * Saves overwrite the current annotation and rewrite ``output.jsonl`` atomically
   (temp file + ``os.replace``). Offsets are sanitised against the text length and
   empty entities are pruned.
@@ -26,7 +29,7 @@ import threading
 from pathlib import Path
 from typing import Callable, Dict, Iterable, List, Optional, Set
 
-from .models import CANONICAL_TYPES, Doc, Entity, Fragment, Mention, merge_fragments
+from .models import CANONICAL_TYPES, Comment, Doc, Entity, Fragment, Mention, merge_fragments
 
 VALID_STATUSES = ("unreviewed", "in_progress", "done")
 
@@ -57,6 +60,14 @@ def _entity_to_json(entity: Entity) -> dict:
     return out
 
 
+def comment_to_json(comment: Comment) -> dict:
+    return {
+        "author": comment.author,
+        "text": comment.text,
+        "created_at": comment.created_at,
+    }
+
+
 class Store:
     def __init__(
         self,
@@ -67,10 +78,20 @@ class Store:
         prefs_path: Optional[os.PathLike | str] = None,
         tag_sink: Optional[Callable[[Iterable[str]], None]] = None,
         doc_sink: Optional[Callable[[List[dict]], None]] = None,
+        comment_source: Optional[Callable[[str], List[dict]]] = None,
+        comment_sink: Optional[Callable[[Dict[str, List[dict]]], None]] = None,
     ) -> None:
         # Called with every tag this store sees (at load, and on each save) so a
         # workspace-wide bank can grow from tags already present in the files.
         self._tag_sink = tag_sink
+        # Comments are shared between annotators, so they are read through
+        # ``comment_source`` (doc_id -> comments) rather than held here — that
+        # way a note another annotator just wrote shows up without a reload.
+        # ``comment_sink`` receives the comments found in the input/output files
+        # so the shared thread survives a deleted sidecar. Both None: comments
+        # are simply absent, and the files keep their original shape.
+        self._comment_source = comment_source
+        self._comment_sink = comment_sink
         # Called with saved records *after* they are on disk, for mirrors that
         # shadow the output file. Never called with an empty list.
         self._doc_sink = doc_sink
@@ -109,6 +130,10 @@ class Store:
         if not self.input_path.exists():
             raise FileNotFoundError(f"input file not found: {self.input_path}")
 
+        # doc_id -> comments carried by the files, handed to the shared thread
+        # once both the input and the resumed output have been read.
+        found_comments: Dict[str, List[dict]] = {}
+
         with self.input_path.open(encoding="utf-8") as f:
             for lineno, line in enumerate(f, 1):
                 line = line.strip()
@@ -135,13 +160,15 @@ class Store:
                     "entities": [e.model_copy(deep=True) for e in pred],
                 }
                 self.status[doc.doc_id] = "unreviewed"
+                self._collect_comments(doc, found_comments)
 
-        self._merge_output()
+        self._merge_output(found_comments)
         self._load_state()
         self._load_prefs()
         self._publish_tags()
+        self._publish_comments(found_comments)
 
-    def _merge_output(self) -> None:
+    def _merge_output(self, found_comments: Dict[str, List[dict]]) -> None:
         if not self.output_path.exists():
             return
         with self.output_path.open(encoding="utf-8") as f:
@@ -158,6 +185,12 @@ class Store:
                     self.docs[doc.doc_id]["entities"] = self._sanitize(
                         doc.entities, text, where=f"output {doc.doc_id}"
                     )
+                    self._collect_comments(doc, found_comments)
+
+    @staticmethod
+    def _collect_comments(doc: Doc, into: Dict[str, List[dict]]) -> None:
+        if doc.comments:
+            into.setdefault(doc.doc_id, []).extend(comment_to_json(c) for c in doc.comments)
 
     def _load_state(self) -> None:
         if not self.state_path.exists():
@@ -251,6 +284,16 @@ class Store:
         if self._tag_sink is not None:
             self._tag_sink(self.used_tags())
 
+    def _publish_comments(self, found: Dict[str, List[dict]]) -> None:
+        if self._comment_sink is not None and found:
+            self._comment_sink(found)
+
+    def comments(self, doc_id: str) -> List[dict]:
+        """This document's shared comment thread (empty when none are wired up)."""
+        if self._comment_source is None:
+            return []
+        return self._comment_source(doc_id)
+
     # ------------------------------------------------------------------- read
     def config(self) -> dict:
         return {"types": list(self.types)}
@@ -298,6 +341,7 @@ class Store:
             "status": self.status[doc_id],
             "n_entities": len(d["entities"]),
             "n_mentions": sum(len(e.mentions) for e in d["entities"]),
+            "n_comments": len(self.comments(doc_id)),
             "has_prediction": len(d["prediction"]) > 0,
         }
 
@@ -315,6 +359,7 @@ class Store:
                 "status": self.status[doc_id],
                 "entities": [_entity_to_json(e) for e in d["entities"]],
                 "prediction": [_entity_to_json(e) for e in d["prediction"]],
+                "comments": self.comments(doc_id),
             }
 
     # ------------------------------------------------------------------ write
@@ -334,6 +379,20 @@ class Store:
                 self._tag_sink({t for e in d["entities"] for t in e.tags})
             self._publish_docs([doc_id])
             return self._summary(doc_id)
+
+    def resync(self, doc_id: str) -> None:
+        """Rewrite the output after shared state this file embeds changed.
+
+        The comment thread belongs to the workspace, not to one annotator, so
+        when someone posts a note every signed-in annotator's file (and mirror)
+        has to catch up. Annotators who are not signed in catch up on their next
+        save — a save rewrites the whole file, comments included.
+        """
+        with self._lock:
+            if doc_id not in self.docs:
+                return
+            self._flush()
+            self._publish_docs([doc_id])
 
     def sync_all(self) -> None:
         """Push every document to the ``doc_sink``.
@@ -356,11 +415,17 @@ class Store:
     def _record(self, doc_id: str) -> dict:
         """One document in the on-disk output schema."""
         d = self.docs[doc_id]
-        return {
+        record = {
             "doc_id": doc_id,
             "text": d["text"],
             "entities": [_entity_to_json(e) for e in d["entities"]],
         }
+        # Like ``uid`` / ``tags``: written only when there is something to write,
+        # so a corpus nobody has commented on keeps the original shape.
+        comments = self.comments(doc_id)
+        if comments:
+            record["comments"] = comments
+        return record
 
     def _flush(self) -> None:
         self._atomic_write(

@@ -40,6 +40,11 @@ export function DocNavigator() {
             <span className={"dot " + d.status} />
             <span className="nid">{d.doc_id}</span>
             {d.has_prediction && <span className="pred-flag" title="has model prediction">◆</span>}
+            {d.n_comments > 0 && (
+              <span className="comment-flag" title={`${d.n_comments} comment(s)`}>
+                💬{d.n_comments}
+              </span>
+            )}
             <span className="ncount">{d.n_entities}</span>
           </div>
         ))}

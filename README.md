@@ -38,6 +38,11 @@ Input and output are the same `.jsonl` schema, one record per line:
   (any script; only surrounding whitespace is trimmed) and compared exactly, so `NATO` and `nato`
   are different tags. Like `uid`, the field is omitted when empty, so files without tags keep the
   original schema.
+- A document may carry **`"comments"`** — document-level annotator notes, shared by everyone:
+  `{"doc_id": "...", "comments": [{"author": "Alice", "text": "unsure about the last sentence",
+  "created_at": "2026-07-21T09:12:04Z"}]}`. `author` is the annotator's username and `created_at`
+  an ISO-8601 UTC timestamp; both are filled in automatically when a comment arrives without them.
+  Like `uid` and `tags`, the field is omitted when there are no comments.
 - A mention may be **non-continuous**: a single mention made of several disjoint *fragments*,
   written as `{"fragments": [{"start": ..., "end": ...}, ...]}` in place of `{"start", "end"}`.
   E.g. in *"Annie and George Washington"*, the mention "Annie Washington" is
@@ -70,6 +75,8 @@ Per-user state lives next to the output under `<output>.jsonl.users/`:
 ```
 <output>.jsonl.users/
   users.json                 # annotator-name -> on-disk slug registry
+  tags.json                  # shared entity-tag bank
+  comments.json              # shared document comment threads
   <slug>.jsonl               # that annotator's annotations (the on-schema output)
   <slug>.jsonl.state.json    # per-document review status
   <slug>.prefs.json          # saved source selection
@@ -128,10 +135,12 @@ One document per (annotator, `doc_id`), keyed so repeated saves update in place:
 {"_id": "Alice:doc-0001", "annotator": "Alice", "doc_id": "doc-0001",
  "text": "Barack Obama was born in Hawaii.", "status": "done",
  "entities": [{"type": "PER", "mentions": [{"start": 0, "end": 12}], "uid": "Q76"}],
+ "comments": [{"author": "Bob", "text": "check the birth year", "created_at": "2026-07-19T11:52:00Z"}],
  "updated_at": "2026-07-19T11:56:17.267Z"}
 ```
 
-`entities` is byte-for-byte the JSON of the matching `.jsonl` line, plus the review `status`
+`entities` (and `comments`, when the document has any) is byte-for-byte the JSON of the matching
+`.jsonl` line, plus the review `status`
 (which on disk lives in the state sidecar) and the annotator's name. Signing in backfills that
 annotator's whole output, so annotations made before the mirror was switched on are included.
 
@@ -165,6 +174,7 @@ shows the live `1 PER · 2 LOC · …` legend so you always know which number is
 | `Del` / `Backspace` | Delete the hovered mention |
 | `r` | Confirm / unconfirm the active entity |
 | `t` | Tag the active entity (pick from the shared tag bank or create a new tag) |
+| `c` | Toggle the document's comments (`Ctrl+Enter` posts) |
 | `A` | Accept all (confirm every entity) |
 | `m` | Merge: press `m`, then click another entity (or drag card onto card) |
 | `s` | Split the hovered mention into its own entity |
@@ -199,6 +209,20 @@ the union of tags created through the UI and every tag already present in the co
 annotator's output — so a tag one annotator introduces is immediately suggestible to the others,
 and importing pre-tagged annotations seeds the bank automatically. Tags are saved as the entity's
 `"tags"` field in the output.
+
+**Comments.** Each document has a comment thread at the bottom of the right-hand panel (press `c`,
+or click the **💬 Comments** header). Type a note and press `Ctrl+Enter` (or **Post**); `Esc` closes
+the panel. Comments are **document-level** — they are about the document as a whole, not about one
+entity — and they are **shared by all annotators**: everyone reads and writes the same thread, so
+each note shows the username of whoever wrote it above the text, along with when it was written
+(your own notes are marked with a blue rule). The navigator marks documents that have comments, and
+the panel refetches the thread each time you open it, so a colleague's note shows up without a reload.
+
+Comments live in `<output>.jsonl.users/comments.json` and are written into **every** annotator's
+output as the document's `"comments"` field. Posting one immediately rewrites the file of every
+annotator who is signed in; anyone else picks it up on their next save. Like the tag bank, the
+thread is also recovered from the `.jsonl` files if the sidecar is deleted, and comments already
+present in `--input` seed it.
 
 **Non-continuous mentions.** To annotate e.g. "Annie Washington" in *"Annie and George
 Washington"*: select "Annie", press its type digit (a new entity + mention), then select

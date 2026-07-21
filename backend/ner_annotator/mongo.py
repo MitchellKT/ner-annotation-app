@@ -11,10 +11,12 @@ so repeated saves upsert in place rather than piling up revisions::
     {"_id": "Alice:d1", "annotator": "Alice", "doc_id": "d1",
      "text": "Alice met Bob.", "status": "done",
      "entities": [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}],
+     "comments": [{"author": "Bob", "text": "check the date",
+                   "created_at": "2026-07-21T09:12:04Z"}],
      "updated_at": datetime(...)}
 
-``entities`` is the same JSON the ``.jsonl`` line carries, so a record here and
-its output line always agree.
+``entities`` (and ``comments``, when the document has any) is the same JSON the
+``.jsonl`` line carries, so a record here and its output line always agree.
 
 Writes are best-effort: a database that is down or misconfigured must never
 cost an annotator their work, so failures are reported once and then swallowed.

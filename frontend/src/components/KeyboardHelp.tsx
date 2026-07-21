@@ -24,6 +24,7 @@ export function KeyboardHelp({ onClose }: { onClose: () => void }) {
     ["r", "Confirm / unconfirm the active entity"],
     ["t", "Tag the active entity (pick from the shared tag bank or create a new tag)"],
     ["A", "Accept all (confirm every entity)"],
+    ["c", "Toggle the document's comments (shared with every annotator; Ctrl+Enter posts)"],
     ["m", "Merge: press m, then click another entity (or drag card onto card)"],
     ["s", "Split the hovered mention into its own entity"],
     ["drag chip → card", "Reassign a mention to another entity"],
