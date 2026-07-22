@@ -239,9 +239,10 @@ relation to another — *"father of Abraham"*, *"John's secretary"*, *"the compa
 of naming it outright. Mentions start **not relative**; toggle the flag with the `↳` handle on the
 mention's chip, the `↳` button in a mention's action bar (click the mention in the text), or by
 pressing `R` (acts on the hovered mention, else the active entity's last mention).
-Relative mentions are set apart everywhere they show: their chip is dashed and italic with the `↳`
-lit, and their span in the document text is italicised. The flag is saved per mention as
-`"relative": true` and is purely descriptive — it does not change the entity's type or clustering.
+Relative mentions are set apart everywhere they show by a **diagonal hatch** over their box: the
+chip carries the stripes (with a dashed border and the `↳` lit), and the mention's highlight in the
+document text is hatched to match. The flag is saved per mention as `"relative": true` and is purely
+descriptive — it does not change the entity's type or clustering.
 
 **Non-continuous mentions.** To annotate e.g. "Annie Washington" in *"Annie and George
 Washington"*: select "Annie", press its type digit (a new entity + mention), then select

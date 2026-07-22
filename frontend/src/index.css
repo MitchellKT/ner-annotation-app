@@ -101,8 +101,9 @@ kbd {
 }
 .seg { border-radius: 3px; padding: 1px 0; }
 .seg.covered { cursor: pointer; }
-/* A relative mention (refers via a relation, e.g. "father of Abraham"). */
-.seg.relative { font-style: italic; }
+/* A relative mention (refers via a relation, e.g. "father of Abraham") is
+   marked by a diagonal hatch over its highlight box, applied inline in
+   TextPanel so it layers with the per-entity tint and underline bars. */
 .seg.flash { animation: flash 0.9s ease-out; }
 @keyframes flash { 0% { box-shadow: 0 0 0 3px rgba(37,99,235,0.5); } 100% { box-shadow: 0 0 0 3px rgba(37,99,235,0); } }
 
@@ -179,8 +180,14 @@ kbd {
 .chip .added { color: var(--ok); font-weight: 700; }
 .chip .frag-gap { color: var(--muted); font-weight: 700; letter-spacing: 1px; }
 /* Relative mention: refers to its entity via a relation ("father of Abraham"). */
-.chip.relative { border-style: dashed; font-style: italic; }
-.chip.relative bdi { text-decoration: underline dotted; text-underline-offset: 2px; }
+/* Relative mention: a diagonal hatch over the chip box (the dashed border and
+   the lit ↳ handle are the other cues), matching the highlight in the text. */
+.chip.relative {
+  --hatch: repeating-linear-gradient(-45deg, rgba(30,41,59,0.12) 0, rgba(30,41,59,0.12) 3px, transparent 3px, transparent 7px);
+  border-style: dashed;
+  background-image: var(--hatch);
+}
+.chip.relative:hover { background-image: var(--hatch); }
 .chip .rel-toggle {
   color: var(--muted); cursor: pointer; font-weight: 700; opacity: 0.45;
   font-style: normal; line-height: 1;
