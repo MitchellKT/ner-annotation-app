@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useStore } from "../store";
-import { computeSegments, type SpanInput } from "../lib/segments";
+import { computeSegments, type Segment, type SpanInput } from "../lib/segments";
 import { cpSlice, normalizeSelection, selectionToSpan } from "../lib/offsets";
 import { colorForIndex } from "../colors";
+import { MentionMenu } from "./MentionMenu";
 
 export function TextPanel() {
   const cps = useStore((s) => s.cps);
@@ -14,6 +15,8 @@ export function TextPanel() {
   const setSelectionSpan = useStore((s) => s.setSelectionSpan);
   const setActiveEntity = useStore((s) => s.setActiveEntity);
   const setHoverEntity = useStore((s) => s.setHoverEntity);
+  const openMentionMenu = useStore((s) => s.openMentionMenu);
+  const closeMentionMenu = useStore((s) => s.closeMentionMenu);
 
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -23,6 +26,22 @@ export function TextPanel() {
     entities.forEach((e, i) => m.set(e.id, { idx: i, active: e.id === activeEntityId }));
     return m;
   }, [entities, activeEntityId]);
+
+  // mentionId -> its owning entity, size (total fragment length) and stacking
+  // order. Used to pick a click target when several mentions cover one spot:
+  // the shortest mention wins, so one strictly contained in another (e.g.
+  // "Obama" inside "Barack Obama") stays reachable on its own text.
+  const mentionMeta = useMemo(() => {
+    const m = new Map<string, { entityId: string; size: number; order: number }>();
+    let order = 0;
+    for (const e of entities) {
+      for (const mn of e.mentions) {
+        const size = mn.fragments.reduce((a, f) => a + (f.end - f.start), 0);
+        m.set(mn.id, { entityId: e.id, size, order: order++ });
+      }
+    }
+    return m;
+  }, [entities]);
 
   const segments = useMemo(() => {
     const spans: SpanInput[] = [];
@@ -55,15 +74,36 @@ export function TextPanel() {
       setSelectionSpan(null);
       return;
     }
+    // Starting a fresh selection dismisses any open mention bar.
+    closeMentionMenu();
     const span = normalizeSelection(cps, raw.start, raw.end);
     setSelectionSpan(span);
   }
 
-  function onSegmentClick(entityIds: string[]) {
-    // Plain click (no selection) on a covered span -> activate its top entity.
+  function onSegmentClick(seg: Segment) {
+    // Plain click (no selection) on a covered span -> activate the targeted
+    // entity and pop up that mention's action bar right above the text.
     const sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
-    if (entityIds.length > 0) setActiveEntity(entityIds[entityIds.length - 1]);
+    // Among the mentions covering this spot, target the shortest one, so a
+    // mention strictly contained in another is reachable on its own text
+    // instead of always yielding to the longer one on top. Ties prefer the
+    // active entity, then the top-most (last) mention.
+    const candidates: { mid: string; entityId: string; size: number; order: number }[] = [];
+    for (const mid of seg.mentionIds) {
+      const info = mentionMeta.get(mid);
+      if (info) candidates.push({ mid, ...info });
+    }
+    if (candidates.length === 0) return;
+    candidates.sort(
+      (a, b) =>
+        a.size - b.size ||
+        Number(b.entityId === activeEntityId) - Number(a.entityId === activeEntityId) ||
+        b.order - a.order
+    );
+    const target = candidates[0];
+    setActiveEntity(target.entityId);
+    openMentionMenu({ entityId: target.entityId, mentionId: target.mid, anchorStart: seg.start });
   }
 
   return (
@@ -114,7 +154,7 @@ export function TextPanel() {
                 paddingBottom: `${seg.entityIds.length * 3}px`,
                 boxShadow: isHover ? "inset 0 0 0 1.5px rgba(37,99,235,0.7)" : undefined,
               }}
-              onClick={() => onSegmentClick(seg.entityIds)}
+              onClick={() => onSegmentClick(seg)}
               onMouseEnter={() => setHoverEntity(primaryId)}
               onMouseLeave={() => setHoverEntity(null)}
               title={seg.entityIds.map((id) => entities.find((e) => e.id === id)?.type).join(" / ")}
@@ -124,6 +164,7 @@ export function TextPanel() {
           );
         })}
       </div>
+      <MentionMenu />
     </div>
   );
 }
