@@ -27,6 +27,7 @@ export function KeyboardHelp({ onClose }: { onClose: () => void }) {
     ["c", "Toggle the document's comments (shared with every annotator; Ctrl+Enter posts)"],
     ["m", "Merge: press m, then click another entity (or drag card onto card)"],
     ["s", "Split the hovered mention into its own entity"],
+    ["R", "Toggle “relative” on a mention (refers via a relation, e.g. “father of Abraham”): hovered mention, else the active entity's last"],
     ["drag chip → card", "Reassign a mention to another entity"],
     ["drag chip out", "Split that mention into a new entity (drop on empty space or back on its own card)"],
     ["Esc", "Cancel a pending merge / clear selection"],

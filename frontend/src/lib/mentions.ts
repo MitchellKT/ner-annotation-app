@@ -30,8 +30,19 @@ export function wireFragments(m: WireMention): WireSpan[] {
   return [{ start: m.start, end: m.end }];
 }
 
-/** Serialize fragments back to the wire: single-fragment stays {start,end}. */
-export function toWireMention(fragments: Span[]): WireMention {
-  if (fragments.length === 1) return { start: fragments[0].start, end: fragments[0].end };
-  return { fragments: fragments.map((f) => ({ start: f.start, end: f.end })) };
+/** Whether a wire mention is flagged relative (absent flag = not relative). */
+export function wireRelative(m: WireMention): boolean {
+  return Boolean((m as { relative?: boolean }).relative);
+}
+
+/**
+ * Serialize fragments back to the wire: single-fragment stays {start,end}. The
+ * `relative` flag is only emitted when true, so ordinary mentions keep the
+ * original on-disk shape.
+ */
+export function toWireMention(fragments: Span[], relative = false): WireMention {
+  const rel = relative ? { relative: true as const } : {};
+  if (fragments.length === 1)
+    return { start: fragments[0].start, end: fragments[0].end, ...rel };
+  return { fragments: fragments.map((f) => ({ start: f.start, end: f.end })), ...rel };
 }

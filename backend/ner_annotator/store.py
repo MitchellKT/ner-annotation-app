@@ -42,8 +42,14 @@ def _mention_to_json(mention: Mention) -> dict:
     # shape; only non-continuous mentions use the {"fragments": [...]} form.
     if len(mention.fragments) == 1:
         f = mention.fragments[0]
-        return {"start": f.start, "end": f.end}
-    return {"fragments": [{"start": f.start, "end": f.end} for f in mention.fragments]}
+        out: dict = {"start": f.start, "end": f.end}
+    else:
+        out = {"fragments": [{"start": f.start, "end": f.end} for f in mention.fragments]}
+    # Only written when set, so ordinary (non-relative) mentions keep the
+    # original on-disk shape.
+    if mention.relative:
+        out["relative"] = True
+    return out
 
 
 def _entity_to_json(entity: Entity) -> dict:
@@ -260,7 +266,7 @@ class Store:
                 if key in seen:
                     continue
                 seen.add(key)
-                mentions.append(Mention(fragments=fragments))
+                mentions.append(Mention(fragments=fragments, relative=m.relative))
             if mentions:
                 cleaned.append(
                     Entity(

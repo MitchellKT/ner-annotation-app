@@ -24,6 +24,15 @@ export function TextPanel() {
     return m;
   }, [entities, activeEntityId]);
 
+  // Mentions flagged "relative" get a distinct look in the text (italic +
+  // dotted underline), matching their chips in the entity panel.
+  const relativeMentionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const e of entities)
+      for (const mn of e.mentions) if (mn.relative) ids.add(mn.id);
+    return ids;
+  }, [entities]);
+
   const segments = useMemo(() => {
     const spans: SpanInput[] = [];
     for (const e of entities) {
@@ -103,10 +112,12 @@ export function TextPanel() {
             ? seg.mentionIds.includes(hoverMentionId)
             : seg.entityIds.includes(hoverEntityId ?? "");
 
+          const isRelative = seg.mentionIds.some((id) => relativeMentionIds.has(id));
+
           return (
             <span
               key={seg.start}
-              className="seg covered"
+              className={"seg covered" + (isRelative ? " relative" : "")}
               data-start={seg.start}
               data-end={seg.end}
               style={{

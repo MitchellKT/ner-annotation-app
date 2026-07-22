@@ -101,6 +101,8 @@ kbd {
 }
 .seg { border-radius: 3px; padding: 1px 0; }
 .seg.covered { cursor: pointer; }
+/* A relative mention (refers via a relation, e.g. "father of Abraham"). */
+.seg.relative { font-style: italic; }
 .seg.flash { animation: flash 0.9s ease-out; }
 @keyframes flash { 0% { box-shadow: 0 0 0 3px rgba(37,99,235,0.5); } 100% { box-shadow: 0 0 0 3px rgba(37,99,235,0); } }
 
@@ -152,6 +154,15 @@ kbd {
 .chip .x:hover { color: var(--danger); }
 .chip .added { color: var(--ok); font-weight: 700; }
 .chip .frag-gap { color: var(--muted); font-weight: 700; letter-spacing: 1px; }
+/* Relative mention: refers to its entity via a relation ("father of Abraham"). */
+.chip.relative { border-style: dashed; font-style: italic; }
+.chip.relative bdi { text-decoration: underline dotted; text-underline-offset: 2px; }
+.chip .rel-toggle {
+  color: var(--muted); cursor: pointer; font-weight: 700; opacity: 0.45;
+  font-style: normal; line-height: 1;
+}
+.chip .rel-toggle:hover { opacity: 1; color: var(--accent); }
+.chip .rel-toggle.on { opacity: 1; color: var(--accent); }
 
 .type-menu { display: flex; gap: 4px; }
 .type-menu button { padding: 2px 8px; font-size: 11px; font-weight: 700; }
