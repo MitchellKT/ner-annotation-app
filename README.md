@@ -244,9 +244,10 @@ highlight in the text, or by clicking a card when no text is selected.
 **Mention action bar.** Clicking a highlighted mention in the text (with nothing selected) also pops
 up a small bar right above it, so the common per-mention edits are reachable without leaving the
 text: **✕ mention** removes just that mention, **⑃** splits it into its own entity, and the rest —
-retype, confirm, 🏷 tag, id, 🗑 delete — act on its entity. For a mention shared by overlapping
-entities the bar targets the top-most one (the same entity a plain click activates). `Esc`, an
-outside click, or scrolling dismisses it.
+retype, confirm, 🏷 tag, id, 🗑 delete — act on its entity. Where several mentions cover the click
+the bar targets the **shortest** one, so a mention strictly contained in another (e.g. "Obama"
+inside "Barack Obama") stays reachable on its own text; the longer one is still reached from the
+text it alone covers. `Esc`, an outside click, or scrolling dismisses it.
 
 ## Tests
 

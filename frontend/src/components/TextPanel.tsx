@@ -27,6 +27,22 @@ export function TextPanel() {
     return m;
   }, [entities, activeEntityId]);
 
+  // mentionId -> its owning entity, size (total fragment length) and stacking
+  // order. Used to pick a click target when several mentions cover one spot:
+  // the shortest mention wins, so one strictly contained in another (e.g.
+  // "Obama" inside "Barack Obama") stays reachable on its own text.
+  const mentionMeta = useMemo(() => {
+    const m = new Map<string, { entityId: string; size: number; order: number }>();
+    let order = 0;
+    for (const e of entities) {
+      for (const mn of e.mentions) {
+        const size = mn.fragments.reduce((a, f) => a + (f.end - f.start), 0);
+        m.set(mn.id, { entityId: e.id, size, order: order++ });
+      }
+    }
+    return m;
+  }, [entities]);
+
   const segments = useMemo(() => {
     const spans: SpanInput[] = [];
     for (const e of entities) {
@@ -65,22 +81,29 @@ export function TextPanel() {
   }
 
   function onSegmentClick(seg: Segment) {
-    // Plain click (no selection) on a covered span -> activate its top entity and
-    // pop up that mention's action bar right above the text.
+    // Plain click (no selection) on a covered span -> activate the targeted
+    // entity and pop up that mention's action bar right above the text.
     const sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
-    if (seg.entityIds.length === 0) return;
-    // Primary = the active entity if it covers here, else the top-most (last).
-    const activeHere = seg.entityIds.find((id) => meta.get(id)?.active);
-    const primaryId = activeHere ?? seg.entityIds[seg.entityIds.length - 1];
-    setActiveEntity(primaryId);
-    // The clicked mention is the one at this segment that belongs to the primary
-    // entity (a segment may be shared by several overlapping entities).
-    const primary = entities.find((e) => e.id === primaryId);
-    const mention = primary?.mentions.find((m) => seg.mentionIds.includes(m.id));
-    if (mention) {
-      openMentionMenu({ entityId: primaryId, mentionId: mention.id, anchorStart: seg.start });
+    // Among the mentions covering this spot, target the shortest one, so a
+    // mention strictly contained in another is reachable on its own text
+    // instead of always yielding to the longer one on top. Ties prefer the
+    // active entity, then the top-most (last) mention.
+    const candidates: { mid: string; entityId: string; size: number; order: number }[] = [];
+    for (const mid of seg.mentionIds) {
+      const info = mentionMeta.get(mid);
+      if (info) candidates.push({ mid, ...info });
     }
+    if (candidates.length === 0) return;
+    candidates.sort(
+      (a, b) =>
+        a.size - b.size ||
+        Number(b.entityId === activeEntityId) - Number(a.entityId === activeEntityId) ||
+        b.order - a.order
+    );
+    const target = candidates[0];
+    setActiveEntity(target.entityId);
+    openMentionMenu({ entityId: target.entityId, mentionId: target.mid, anchorStart: seg.start });
   }
 
   return (
