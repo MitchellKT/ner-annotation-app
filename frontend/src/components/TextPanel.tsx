@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useStore } from "../store";
-import { computeSegments, type SpanInput } from "../lib/segments";
+import { computeSegments, type Segment, type SpanInput } from "../lib/segments";
 import { cpSlice, normalizeSelection, selectionToSpan } from "../lib/offsets";
 import { colorForIndex } from "../colors";
+import { MentionMenu } from "./MentionMenu";
 
 export function TextPanel() {
   const cps = useStore((s) => s.cps);
@@ -14,6 +15,8 @@ export function TextPanel() {
   const setSelectionSpan = useStore((s) => s.setSelectionSpan);
   const setActiveEntity = useStore((s) => s.setActiveEntity);
   const setHoverEntity = useStore((s) => s.setHoverEntity);
+  const openMentionMenu = useStore((s) => s.openMentionMenu);
+  const closeMentionMenu = useStore((s) => s.closeMentionMenu);
 
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -55,15 +58,29 @@ export function TextPanel() {
       setSelectionSpan(null);
       return;
     }
+    // Starting a fresh selection dismisses any open mention bar.
+    closeMentionMenu();
     const span = normalizeSelection(cps, raw.start, raw.end);
     setSelectionSpan(span);
   }
 
-  function onSegmentClick(entityIds: string[]) {
-    // Plain click (no selection) on a covered span -> activate its top entity.
+  function onSegmentClick(seg: Segment) {
+    // Plain click (no selection) on a covered span -> activate its top entity and
+    // pop up that mention's action bar right above the text.
     const sel = window.getSelection();
     if (sel && !sel.isCollapsed) return;
-    if (entityIds.length > 0) setActiveEntity(entityIds[entityIds.length - 1]);
+    if (seg.entityIds.length === 0) return;
+    // Primary = the active entity if it covers here, else the top-most (last).
+    const activeHere = seg.entityIds.find((id) => meta.get(id)?.active);
+    const primaryId = activeHere ?? seg.entityIds[seg.entityIds.length - 1];
+    setActiveEntity(primaryId);
+    // The clicked mention is the one at this segment that belongs to the primary
+    // entity (a segment may be shared by several overlapping entities).
+    const primary = entities.find((e) => e.id === primaryId);
+    const mention = primary?.mentions.find((m) => seg.mentionIds.includes(m.id));
+    if (mention) {
+      openMentionMenu({ entityId: primaryId, mentionId: mention.id, anchorStart: seg.start });
+    }
   }
 
   return (
@@ -114,7 +131,7 @@ export function TextPanel() {
                 paddingBottom: `${seg.entityIds.length * 3}px`,
                 boxShadow: isHover ? "inset 0 0 0 1.5px rgba(37,99,235,0.7)" : undefined,
               }}
-              onClick={() => onSegmentClick(seg.entityIds)}
+              onClick={() => onSegmentClick(seg)}
               onMouseEnter={() => setHoverEntity(primaryId)}
               onMouseLeave={() => setHoverEntity(null)}
               title={seg.entityIds.map((id) => entities.find((e) => e.id === id)?.type).join(" / ")}
@@ -124,6 +141,7 @@ export function TextPanel() {
           );
         })}
       </div>
+      <MentionMenu />
     </div>
   );
 }

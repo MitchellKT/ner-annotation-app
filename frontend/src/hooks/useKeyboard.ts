@@ -132,6 +132,7 @@ export function useKeyboard(toggleHelp: () => void) {
           return;
         case "Escape":
           s.cancelMerge();
+          s.closeMentionMenu();
           s.setSelectionSpan(null);
           clearNativeSelection();
           return;

@@ -128,6 +128,9 @@ interface State {
   draggingMention: { mentionId: string; fromId: string } | null; // mention chip currently being dragged
   uidPromptEntityId: string | null; // entity whose unique-id prompt is open
   tagPromptEntityId: string | null; // entity whose tag picker is open
+  // A clicked mention's floating action bar: which mention, and the segment
+  // start it was anchored to (so the popover can position itself in the text).
+  mentionMenu: { entityId: string; mentionId: string; anchorStart: number } | null;
   selectionSpan: { start: number; end: number } | null; // current normalized text selection
   scrollTo: { start: number; nonce: number } | null; // request TextPanel to scroll/flash a span
   autoMatch: boolean; // propagate a new mention to identical text elsewhere
@@ -164,6 +167,8 @@ interface State {
   closeUidPrompt: () => void;
   openTagPrompt: (entityId: string) => void;
   closeTagPrompt: () => void;
+  openMentionMenu: (payload: { entityId: string; mentionId: string; anchorStart: number }) => void;
+  closeMentionMenu: () => void;
   loadTags: () => Promise<void>;
   setCommentsOpen: (open: boolean) => void;
   loadComments: () => Promise<void>;
@@ -299,6 +304,7 @@ export const useStore = create<State>((set, get) => {
     draggingMention: null,
     uidPromptEntityId: null,
     tagPromptEntityId: null,
+    mentionMenu: null,
     selectionSpan: null,
     scrollTo: null,
     autoMatch: false,
@@ -396,6 +402,7 @@ export const useStore = create<State>((set, get) => {
           draggingMention: null,
           uidPromptEntityId: null,
           tagPromptEntityId: null,
+          mentionMenu: null,
           selectionSpan: null,
           undoStack: [],
           redoStack: [],
@@ -456,6 +463,9 @@ export const useStore = create<State>((set, get) => {
       void get().loadTags();
     },
     closeTagPrompt: () => set({ tagPromptEntityId: null }),
+
+    openMentionMenu: (payload) => set({ mentionMenu: payload }),
+    closeMentionMenu: () => set({ mentionMenu: null }),
 
     async loadTags() {
       try {
