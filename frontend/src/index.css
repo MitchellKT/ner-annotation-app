@@ -106,6 +106,30 @@ kbd {
 .seg.flash { animation: flash 0.9s ease-out; }
 @keyframes flash { 0% { box-shadow: 0 0 0 3px rgba(37,99,235,0.5); } 100% { box-shadow: 0 0 0 3px rgba(37,99,235,0); } }
 
+/* ---- mention action bar (pops above a clicked mention) ---- */
+.mention-menu {
+  position: fixed; z-index: 40;
+  display: flex; align-items: center; gap: 5px;
+  padding: 5px 7px; border-radius: 8px;
+  background: var(--panel); border: 1px solid var(--border-strong);
+  box-shadow: 0 8px 24px rgba(16, 24, 40, 0.18);
+  font-size: 13px; white-space: nowrap; user-select: none;
+}
+.mention-menu .mm-swatch { width: 11px; height: 11px; border-radius: 3px; flex: none; }
+.mention-menu .mm-index { font-size: 11px; color: var(--muted); font-family: ui-monospace, monospace; }
+.mention-menu .mm-type { cursor: pointer; }
+.mention-menu .mm-surface {
+  max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 12px; color: var(--muted);
+}
+.mention-menu .mm-sep { width: 1px; align-self: stretch; margin: 1px 2px; background: var(--border); }
+.mention-menu .icon-btn { padding: 3px 7px; }
+/* Relative-mention toggle: accent (not the green "confirmed" on-state). */
+.mention-menu .mm-relative.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.mention-menu .mm-remove { color: var(--danger); border-color: #f0c2c2; font-weight: 600; }
+.mention-menu .mm-remove:hover { background: #fdecec; }
+.mention-menu .mm-delete:hover { background: #fdecec; }
+
 /* ---- entity panel ---- */
 .entity-tools { padding: 8px 12px; border-bottom: 1px solid var(--border); display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
 .entity-list { overflow-y: auto; flex: 1; padding: 10px; display: flex; flex-direction: column; gap: 8px; }

@@ -173,6 +173,7 @@ shows the live `1 PER · 2 LOC · …` legend so you always know which number is
 | --- | --- |
 | `1`…`N` | New entity of that type (the Nth configured type) from the selected text |
 | `1`…`N` (nothing selected) | Change the active entity's type to that type |
+| click a mention (nothing selected) | Open its **action bar** above the text — remove the mention, retype / confirm / tag / id / split / delete its entity |
 | click an entity (text selected) | Add the selection to that entity — the only way to extend an existing entity |
 | `Enter` / `Esc` (id prompt) | Save / skip the optional unique identifier asked after creating an entity |
 | `x` (text selected) | Extend a mention with the selection as an extra **fragment** (non-continuous mention): targets the hovered mention, else the active entity's last mention |
@@ -236,7 +237,8 @@ present in `--input` seed it.
 **Relative mentions.** A mention is *relative* when it points at its entity only through a
 relation to another — *"father of Abraham"*, *"John's secretary"*, *"the company's CEO"* — instead
 of naming it outright. Mentions start **not relative**; toggle the flag with the `↳` handle on the
-mention's chip, or press `R` (acts on the hovered mention, else the active entity's last mention).
+mention's chip, the `↳` button in a mention's action bar (click the mention in the text), or by
+pressing `R` (acts on the hovered mention, else the active entity's last mention).
 Relative mentions are set apart everywhere they show: their chip is dashed and italic with the `↳`
 lit, and their span in the document text is italicised. The flag is saved per mention as
 `"relative": true` and is purely descriptive — it does not change the entity's type or clustering.
@@ -253,6 +255,14 @@ To grow an existing entity, select the text then **click that entity's card** in
 (this is the only way to add a mention to an existing entity). The **active entity** (outlined in
 the right panel) is what the type/confirm/merge shortcuts act on; set it with `Tab`, by clicking a
 highlight in the text, or by clicking a card when no text is selected.
+
+**Mention action bar.** Clicking a highlighted mention in the text (with nothing selected) also pops
+up a small bar right above it, so the common per-mention edits are reachable without leaving the
+text: **✕ mention** removes just that mention, **⑃** splits it into its own entity, and the rest —
+retype, confirm, 🏷 tag, id, 🗑 delete — act on its entity. Where several mentions cover the click
+the bar targets the **shortest** one, so a mention strictly contained in another (e.g. "Obama"
+inside "Barack Obama") stays reachable on its own text; the longer one is still reached from the
+text it alone covers. `Esc`, an outside click, or scrolling dismisses it.
 
 ## Tests
 
