@@ -84,16 +84,24 @@ class Mention(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     fragments: List[Fragment]
+    # A *relative* mention refers to its entity only through a relation to some
+    # other entity (e.g. "father of Abraham", "John's secretary") rather than
+    # naming it directly. Defaults to False; omitted from the output when False,
+    # so files without relative mentions keep the original schema.
+    relative: bool = False
 
     @model_validator(mode="before")
     @classmethod
     def _coerce_forms(cls, value: Any) -> Any:
         # Accept the continuous forms — {"start","end"} or [start, end] — as a
         # single-fragment mention, plus the explicit {"fragments": [...]} form.
+        # The mention-level ``relative`` flag rides along on the continuous
+        # {"start","end","relative"} form, so lift it out before wrapping the
+        # span as the sole fragment (Fragment ignores the extra key otherwise).
         if isinstance(value, (list, tuple)):
             return {"fragments": [value]}
         if isinstance(value, dict) and "fragments" not in value:
-            return {"fragments": [value]}
+            return {"fragments": [value], "relative": value.get("relative", False)}
         return value
 
     @model_validator(mode="after")

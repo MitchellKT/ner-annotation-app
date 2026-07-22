@@ -522,3 +522,41 @@ def test_mention_rejects_bad_order():
         Doc.model_validate({"doc_id": "d", "text": "x", "entities": [
             {"type": "PER", "mentions": [[3, 1]]},
         ]})
+
+
+def test_relative_mentions_round_trip(tmp_path):
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    text = "Sarah, the father of Abraham, and George Washington."
+    write_jsonl(inp, [{"doc_id": "d1", "text": text, "entities": [
+        # A continuous relative mention ("father of Abraham").
+        {"type": "PER", "mentions": [{"start": 11, "end": 28, "relative": True}]},
+        # A non-continuous relative mention.
+        {"type": "PER", "mentions": [
+            {"fragments": [{"start": 0, "end": 5}, {"start": 41, "end": 51}], "relative": True}
+        ]},
+        # An ordinary mention keeps the original shape (no `relative` key).
+        {"type": "PER", "mentions": [{"start": 34, "end": 51}]},
+    ]}])
+    store = Store(inp, out)
+    d1 = store.get_doc("d1")
+    assert d1["entities"][0]["mentions"][0] == {"start": 11, "end": 28, "relative": True}
+    assert d1["entities"][1]["mentions"][0] == {
+        "fragments": [{"start": 0, "end": 5}, {"start": 41, "end": 51}], "relative": True
+    }
+    # Non-relative mentions never gain a `relative` key.
+    assert d1["entities"][2]["mentions"][0] == {"start": 34, "end": 51}
+
+    store.save_doc("d1", d1["entities"], status="done")
+    rec = json.loads(out.read_text(encoding="utf-8").strip().splitlines()[0])
+    assert rec["entities"] == d1["entities"]
+    # Resume parses the flag back on both mention shapes.
+    assert Store(inp, out).get_doc("d1")["entities"] == d1["entities"]
+
+
+def test_relative_defaults_false_and_is_omitted():
+    # Absent flag => not relative, and it stays out of the serialized shape.
+    m = Mention.model_validate({"start": 0, "end": 5})
+    assert m.relative is False
+    m2 = Mention.model_validate({"fragments": [{"start": 0, "end": 5}]})
+    assert m2.relative is False

@@ -15,7 +15,7 @@ import type {
 } from "./types";
 import { toCodePoints } from "./lib/offsets";
 import { findOccurrences } from "./lib/matches";
-import { fragmentsKey, mergeFragments, toWireMention, wireFragments } from "./lib/mentions";
+import { fragmentsKey, mergeFragments, toWireMention, wireFragments, wireRelative } from "./lib/mentions";
 import type { WireMention } from "./types";
 
 let _uid = 0;
@@ -47,6 +47,7 @@ function toClientEntities(doc: DocData): Entity[] {
       mentions: e.mentions.map((m) => ({
         id: uid("m"),
         fragments: wireFragments(m).map((f) => ({ start: f.start, end: f.end })),
+        relative: wireRelative(m),
       })),
       uid: e.uid,
       tags: e.tags ?? [],
@@ -61,7 +62,7 @@ function toWire(entities: Entity[]): WireEntity[] {
     .filter((e) => e.mentions.length > 0)
     .map((e) => ({
       type: e.type,
-      mentions: e.mentions.map((m) => toWireMention(m.fragments)),
+      mentions: e.mentions.map((m) => toWireMention(m.fragments, m.relative)),
       ...(e.uid ? { uid: e.uid } : {}),
       ...(e.tags.length ? { tags: e.tags } : {}),
     }));
@@ -179,6 +180,7 @@ interface State {
   addMention: (entityId: string, span: { start: number; end: number }) => void;
   addFragment: (entityId: string, mentionId: string, span: { start: number; end: number }) => void;
   removeFragment: (entityId: string, mentionId: string, fragmentIndex: number) => void;
+  toggleMentionRelative: (entityId: string, mentionId: string) => void;
   newEmptyEntity: () => void;
   removeMention: (entityId: string, mentionId: string) => void;
   reassignMention: (mentionId: string, fromId: string, toId: string) => void;
@@ -520,7 +522,11 @@ export const useStore = create<State>((set, get) => {
         id,
         type,
         mentions: dedupeMentions(
-          expandSpan(span).map((sp) => ({ id: uid("m"), fragments: [{ start: sp.start, end: sp.end }] }))
+          expandSpan(span).map((sp) => ({
+            id: uid("m"),
+            fragments: [{ start: sp.start, end: sp.end }],
+            relative: false,
+          }))
         ),
         tags: [],
         reviewed: true,
@@ -536,6 +542,7 @@ export const useStore = create<State>((set, get) => {
       const added = expandSpan(span).map((sp) => ({
         id: uid("m"),
         fragments: [{ start: sp.start, end: sp.end }],
+        relative: false,
       }));
       mutate((entities) =>
         entities.map((e) =>
@@ -586,6 +593,21 @@ export const useStore = create<State>((set, get) => {
               : e
           )
           .filter((e) => e.mentions.length > 0)
+      );
+    },
+
+    toggleMentionRelative(entityId, mentionId) {
+      mutate((entities) =>
+        entities.map((e) =>
+          e.id === entityId
+            ? {
+                ...e,
+                mentions: e.mentions.map((m) =>
+                  m.id === mentionId ? { ...m, relative: !m.relative } : m
+                ),
+              }
+            : e
+        )
       );
     },
 

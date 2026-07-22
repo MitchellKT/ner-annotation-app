@@ -27,6 +27,15 @@ export function TextPanel() {
     return m;
   }, [entities, activeEntityId]);
 
+  // Mentions flagged "relative" get a distinct look in the text (a diagonal
+  // hatch over the highlight box), matching their chips in the entity panel.
+  const relativeMentionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const e of entities)
+      for (const mn of e.mentions) if (mn.relative) ids.add(mn.id);
+    return ids;
+  }, [entities]);
+
   // mentionId -> its owning entity, size (total fragment length) and stacking
   // order. Used to pick a click target when several mentions cover one spot:
   // the shortest mention wins, so one strictly contained in another (e.g.
@@ -135,6 +144,14 @@ export function TextPanel() {
             })
             .join(", ");
 
+          // A relative mention (refers via a relation, e.g. "father of Abraham")
+          // is marked by a diagonal hatch over its fill — a layer that sits above
+          // the tint but below the underline bars.
+          const isRelative = seg.mentionIds.some((id) => relativeMentionIds.has(id));
+          const hatch =
+            "repeating-linear-gradient(-45deg, rgba(30,41,59,0.16) 0, rgba(30,41,59,0.16) 3px, transparent 3px, transparent 7px)";
+          const fill = isRelative ? `${hatch}, ${tint}` : tint;
+
           // A specific mention hover (hovering its chip) narrows the highlight to
           // just that mention, even though the chip sits inside its entity card —
           // mouseenter doesn't re-fire on the card when moving onto a child, so
@@ -146,11 +163,11 @@ export function TextPanel() {
           return (
             <span
               key={seg.start}
-              className="seg covered"
+              className={"seg covered" + (isRelative ? " relative" : "")}
               data-start={seg.start}
               data-end={seg.end}
               style={{
-                background: `${bars}, ${tint}`,
+                background: `${bars}, ${fill}`,
                 paddingBottom: `${seg.entityIds.length * 3}px`,
                 boxShadow: isHover ? "inset 0 0 0 1.5px rgba(37,99,235,0.7)" : undefined,
               }}

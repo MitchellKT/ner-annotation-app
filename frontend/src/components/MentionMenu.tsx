@@ -20,6 +20,7 @@ export function MentionMenu() {
   const closeMentionMenu = useStore((s) => s.closeMentionMenu);
   const removeMention = useStore((s) => s.removeMention);
   const splitMention = useStore((s) => s.splitMention);
+  const toggleMentionRelative = useStore((s) => s.toggleMentionRelative);
   const toggleReviewed = useStore((s) => s.toggleReviewed);
   const setEntityType = useStore((s) => s.setEntityType);
   const openTagPrompt = useStore((s) => s.openTagPrompt);
@@ -136,6 +137,17 @@ export function MentionMenu() {
         }}
       >
         id
+      </button>
+      <button
+        className={"icon-btn mm-relative" + (mention.relative ? " on" : "")}
+        title={
+          mention.relative
+            ? "relative mention (refers via a relation, e.g. “father of Abraham”) — click to make direct (R)"
+            : "mark as a relative mention — refers via a relation, e.g. “father of Abraham” (R)"
+        }
+        onClick={() => toggleMentionRelative(entity.id, mention.id)}
+      >
+        ↳
       </button>
       <button
         className="icon-btn"

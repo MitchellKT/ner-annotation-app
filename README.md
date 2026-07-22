@@ -44,6 +44,11 @@ Input and output are the same `.jsonl` schema, one record per line:
   "created_at": "2026-07-21T09:12:04Z"}]}`. `author` is the annotator's username and `created_at`
   an ISO-8601 UTC timestamp; both are filled in automatically when a comment arrives without them.
   Like `uid` and `tags`, the field is omitted when there are no comments.
+- A mention may be marked **`"relative"`**: it refers to its entity only through a relation to
+  another entity — e.g. *"father of Abraham"*, *"John's secretary"* — rather than naming it
+  directly. It is written as `{"start": ..., "end": ..., "relative": true}` (or with `"fragments"`
+  for a non-continuous relative mention). Mentions are **not** relative by default, and like `uid`
+  and `tags` the flag is omitted when false, so files without relative mentions keep the original schema.
 - A mention may be **non-continuous**: a single mention made of several disjoint *fragments*,
   written as `{"fragments": [{"start": ..., "end": ...}, ...]}` in place of `{"start", "end"}`.
   E.g. in *"Annie and George Washington"*, the mention "Annie Washington" is
@@ -182,6 +187,7 @@ shows the live `1 PER · 2 LOC · …` legend so you always know which number is
 | `A` | Accept all (confirm every entity) |
 | `m` | Merge: press `m`, then click another entity (or drag card onto card) |
 | `s` | Split the hovered mention into its own entity |
+| `R` | Toggle **relative** on a mention (hovered mention, else the active entity's last) |
 | drag chip → card | Reassign a mention to another entity |
 | `Esc` | Cancel a pending merge / clear selection |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
@@ -227,6 +233,16 @@ output as the document's `"comments"` field. Posting one immediately rewrites th
 annotator who is signed in; anyone else picks it up on their next save. Like the tag bank, the
 thread is also recovered from the `.jsonl` files if the sidecar is deleted, and comments already
 present in `--input` seed it.
+
+**Relative mentions.** A mention is *relative* when it points at its entity only through a
+relation to another — *"father of Abraham"*, *"John's secretary"*, *"the company's CEO"* — instead
+of naming it outright. Mentions start **not relative**; toggle the flag with the `↳` handle on the
+mention's chip, the `↳` button in a mention's action bar (click the mention in the text), or by
+pressing `R` (acts on the hovered mention, else the active entity's last mention).
+Relative mentions are set apart everywhere they show by a **diagonal hatch** over their box: the
+chip carries the stripes (with a dashed border and the `↳` lit), and the mention's highlight in the
+document text is hatched to match. The flag is saved per mention as `"relative": true` and is purely
+descriptive — it does not change the entity's type or clustering.
 
 **Non-continuous mentions.** To annotate e.g. "Annie Washington" in *"Annie and George
 Washington"*: select "Annie", press its type digit (a new entity + mention), then select

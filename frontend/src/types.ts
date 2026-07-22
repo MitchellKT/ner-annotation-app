@@ -4,8 +4,13 @@ export interface WireSpan {
   end: number; // code-point offset, exclusive
 }
 // A continuous mention is a plain {start,end}; a non-continuous mention is an
-// ordered list of non-overlapping fragments (e.g. "Annie … Washington").
-export type WireMention = WireSpan | { fragments: WireSpan[] };
+// ordered list of non-overlapping fragments (e.g. "Annie … Washington"). Either
+// form may carry `relative: true` when the mention refers to its entity through
+// a relation to another (e.g. "father of Abraham"); the flag is omitted when
+// false, so ordinary mentions keep the original schema.
+export type WireMention =
+  | (WireSpan & { relative?: boolean })
+  | { fragments: WireSpan[]; relative?: boolean };
 export interface WireEntity {
   type: string;
   mentions: WireMention[];
@@ -74,6 +79,9 @@ export interface Mention {
   id: string;
   // One or more sorted, non-overlapping spans; length > 1 = non-continuous.
   fragments: { start: number; end: number }[];
+  // True when the mention names its entity only through a relation to another
+  // (e.g. "father of Abraham", "John's secretary"). Defaults to false.
+  relative: boolean;
 }
 
 export interface Entity {

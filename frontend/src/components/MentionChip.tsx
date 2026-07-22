@@ -14,6 +14,7 @@ export function MentionChip({ entityId, mention, added }: Props) {
   const removeMention = useStore((s) => s.removeMention);
   const removeFragment = useStore((s) => s.removeFragment);
   const addFragment = useStore((s) => s.addFragment);
+  const toggleMentionRelative = useStore((s) => s.toggleMentionRelative);
   const requestScrollTo = useStore((s) => s.requestScrollTo);
   const setHoverMention = useStore((s) => s.setHoverMention);
   const hoverMentionId = useStore((s) => s.hoverMentionId);
@@ -42,6 +43,7 @@ export function MentionChip({ entityId, mention, added }: Props) {
       className={
         "chip" +
         (hoverMentionId === mention.id ? " hover" : "") +
+        (mention.relative ? " relative" : "") +
         // With a span selected, clicking this chip adds it as an extra fragment.
         (selectionSpan ? " pick-target" : "")
       }
@@ -65,10 +67,25 @@ export function MentionChip({ entityId, mention, added }: Props) {
       onMouseLeave={() => setHoverMention(null)}
       title={
         mention.fragments.map((f) => `[${f.start}, ${f.end})`).join(" + ") +
+        (mention.relative ? " — relative mention" : "") +
         " — click to locate (with text selected: add as fragment), drag onto another entity to reassign, drag out (onto empty space or off its own card) to split into a new entity"
       }
     >
       {added && <span className="added" title="added vs. prediction">+</span>}
+      <span
+        className={"rel-toggle" + (mention.relative ? " on" : "")}
+        title={
+          mention.relative
+            ? "relative mention (refers via a relation, e.g. “father of Abraham”) — click to make direct (R)"
+            : "mark as a relative mention — refers via a relation, e.g. “father of Abraham” (R)"
+        }
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleMentionRelative(entityId, mention.id);
+        }}
+      >
+        ↳
+      </span>
       {mention.fragments.map((f, i) => {
         const surface = cpSlice(cps, f.start, f.end);
         return (
