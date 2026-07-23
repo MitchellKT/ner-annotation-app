@@ -60,6 +60,10 @@ kbd {
   padding: 8px 14px; background: var(--panel);
   border-bottom: 1px solid var(--border); box-shadow: var(--shadow); z-index: 2;
 }
+/* Keep every top-bar item on a single line and at its natural width; only the
+   meta-header (type · category · source) is allowed to shrink and truncate. */
+.topbar > * { flex-shrink: 0; }
+.topbar button { white-space: nowrap; }
 .topbar .title { font-weight: 700; letter-spacing: -0.2px; }
 .topbar .docid { font-family: ui-monospace, monospace; color: var(--muted); }
 .topbar .spacer { flex: 1; }
@@ -317,8 +321,16 @@ kbd {
 .center-msg { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--muted); }
 
 /* ---- document type / source header ---- */
-.meta-header { display: inline-flex; align-items: center; gap: 6px; }
-.meta-chip { font-size: 12px; padding: 2px 9px; border-radius: 99px; border: 1px solid var(--border-strong); }
+/* Allowed to shrink so a long source truncates rather than pushing the bar
+   items into a second row. min-width:0 lets flex actually shrink it. */
+.meta-header { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 1; min-width: 0; }
+.meta-chip {
+  font-size: 12px; padding: 2px 9px; border-radius: 99px;
+  border: 1px solid var(--border-strong);
+  /* Single line, centered, truncated with "…" when too long. */
+  display: inline-block; max-width: 200px; vertical-align: middle;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center;
+}
 .meta-chip.type { background: var(--accent-soft); border-color: #c7dbfb; color: #1d4fd7; font-weight: 600; }
 .meta-chip.category { background: #eef7f0; border-color: #c6e6cf; color: #1c7a3f; }
 .meta-chip.source { background: #f3f5f8; color: var(--text); }

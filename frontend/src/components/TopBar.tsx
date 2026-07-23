@@ -32,11 +32,11 @@ export function TopBar({ onHelp }: { onHelp: () => void }) {
       {idx >= 0 && <span style={{ color: "var(--muted)", fontSize: 12 }}>#{idx + 1}/{total}</span>}
       {doc && (
         <span className="meta-header" title="document type · category · source">
-          <span className="meta-chip type">{doc.type}</span>
+          <span className="meta-chip type" title={doc.type}>{doc.type}</span>
           <span className="meta-sep">·</span>
-          <span className="meta-chip category">{doc.category}</span>
+          <span className="meta-chip category" title={doc.category}>{doc.category}</span>
           <span className="meta-sep">·</span>
-          <span className="meta-chip source">{doc.source}</span>
+          <span className="meta-chip source" title={doc.source}>{doc.source}</span>
         </span>
       )}
       <span className={"status-chip " + status}>{status.replace("_", " ")}</span>
