@@ -5,12 +5,15 @@ export interface WireSpan {
 }
 // A continuous mention is a plain {start,end}; a non-continuous mention is an
 // ordered list of non-overlapping fragments (e.g. "Annie … Washington"). Either
-// form may carry `relative: true` when the mention refers to its entity through
-// a relation to another (e.g. "father of Abraham"); the flag is omitted when
-// false, so ordinary mentions keep the original schema.
+// form may carry two independent descriptive flags, each omitted when false so
+// ordinary mentions keep the original schema:
+//   `relative: true` — refers to its entity through a relation to another
+//                      (e.g. "father of Abraham").
+//   `implicit: true` — names its entity directly but in a non-subject,
+//                      background role (e.g. "Maxim" in "Maxim's brother").
 export type WireMention =
-  | (WireSpan & { relative?: boolean })
-  | { fragments: WireSpan[]; relative?: boolean };
+  | (WireSpan & { relative?: boolean; implicit?: boolean })
+  | { fragments: WireSpan[]; relative?: boolean; implicit?: boolean };
 export interface WireEntity {
   type: string;
   mentions: WireMention[];
@@ -82,6 +85,10 @@ export interface Mention {
   // True when the mention names its entity only through a relation to another
   // (e.g. "father of Abraham", "John's secretary"). Defaults to false.
   relative: boolean;
+  // True when the mention names its entity directly but in a non-subject,
+  // background role (e.g. "Maxim" in "Maxim's brother"). Independent of
+  // `relative` — a mention may be neither, either, or both. Defaults to false.
+  implicit: boolean;
 }
 
 export interface Entity {

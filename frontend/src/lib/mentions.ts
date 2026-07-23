@@ -35,14 +35,26 @@ export function wireRelative(m: WireMention): boolean {
   return Boolean((m as { relative?: boolean }).relative);
 }
 
+/** Whether a wire mention is flagged implicit (absent flag = not implicit). */
+export function wireImplicit(m: WireMention): boolean {
+  return Boolean((m as { implicit?: boolean }).implicit);
+}
+
 /**
  * Serialize fragments back to the wire: single-fragment stays {start,end}. The
- * `relative` flag is only emitted when true, so ordinary mentions keep the
- * original on-disk shape.
+ * `relative` and `implicit` flags are only emitted when true, so ordinary
+ * mentions keep the original on-disk shape.
  */
-export function toWireMention(fragments: Span[], relative = false): WireMention {
-  const rel = relative ? { relative: true as const } : {};
+export function toWireMention(
+  fragments: Span[],
+  relative = false,
+  implicit = false
+): WireMention {
+  const flags = {
+    ...(relative ? { relative: true as const } : {}),
+    ...(implicit ? { implicit: true as const } : {}),
+  };
   if (fragments.length === 1)
-    return { start: fragments[0].start, end: fragments[0].end, ...rel };
-  return { fragments: fragments.map((f) => ({ start: f.start, end: f.end })), ...rel };
+    return { start: fragments[0].start, end: fragments[0].end, ...flags };
+  return { fragments: fragments.map((f) => ({ start: f.start, end: f.end })), ...flags };
 }

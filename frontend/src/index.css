@@ -10,6 +10,9 @@
   --danger: #dc2626;
   --ok: #16a34a;
   --warn: #d97706;
+  /* Accent for the "implicit" mention mark, kept distinct from the blue
+     --accent used by the "relative" mark so the two toggles read apart. */
+  --implicit: #7c3aed;
   --radius: 8px;
   --shadow: 0 1px 2px rgba(16, 24, 40, 0.06), 0 1px 3px rgba(16, 24, 40, 0.08);
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
@@ -127,6 +130,8 @@ kbd {
 .mention-menu .icon-btn { padding: 3px 7px; }
 /* Relative-mention toggle: accent (not the green "confirmed" on-state). */
 .mention-menu .mm-relative.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* Implicit-mention toggle: its own violet, so it never reads as "relative". */
+.mention-menu .mm-implicit.on { background: var(--implicit); border-color: var(--implicit); color: #fff; }
 .mention-menu .mm-remove { color: var(--danger); border-color: #f0c2c2; font-weight: 600; }
 .mention-menu .mm-remove:hover { background: #fdecec; }
 .mention-menu .mm-delete:hover { background: #fdecec; }
@@ -181,19 +186,39 @@ kbd {
 .chip .frag-gap { color: var(--muted); font-weight: 700; letter-spacing: 1px; }
 /* Relative mention: refers to its entity via a relation ("father of Abraham"). */
 /* Relative mention: a diagonal hatch over the chip box (the dashed border and
-   the lit ↳ handle are the other cues), matching the highlight in the text. */
+   the lit ↪ handle are the other cues), matching the highlight in the text. */
 .chip.relative {
   --hatch: repeating-linear-gradient(-45deg, rgba(30,41,59,0.12) 0, rgba(30,41,59,0.12) 3px, transparent 3px, transparent 7px);
   border-style: dashed;
   background-image: var(--hatch);
 }
 .chip.relative:hover { background-image: var(--hatch); }
-.chip .rel-toggle {
+/* Implicit mention: entity isn't the subject ("Maxim" in "Maxim's brother").
+   Marked by a dotted overlay + dotted border + lit ◌ handle — a texture and
+   colour distinct from the relative hatch, so the two are told apart at a
+   glance and can layer on a mention that is both. */
+.chip.implicit {
+  --dots: radial-gradient(rgba(30,41,59,0.22) 1.1px, transparent 1.3px);
+  border-style: dotted;
+  background-image: var(--dots);
+  background-size: 5px 5px;
+}
+.chip.implicit:hover { background-image: var(--dots); }
+/* Both marks at once: keep the dotted border and layer hatch over dots. */
+.chip.relative.implicit {
+  border-style: dashed;
+  background-image: var(--hatch), var(--dots);
+  background-size: auto, 5px 5px;
+}
+.chip.relative.implicit:hover { background-image: var(--hatch), var(--dots); }
+.chip .rel-toggle, .chip .impl-toggle {
   color: var(--muted); cursor: pointer; font-weight: 700; opacity: 0.45;
   font-style: normal; line-height: 1;
 }
 .chip .rel-toggle:hover { opacity: 1; color: var(--accent); }
 .chip .rel-toggle.on { opacity: 1; color: var(--accent); }
+.chip .impl-toggle:hover { opacity: 1; color: var(--implicit); }
+.chip .impl-toggle.on { opacity: 1; color: var(--implicit); }
 
 .type-menu { display: flex; gap: 4px; }
 .type-menu button { padding: 2px 8px; font-size: 11px; font-weight: 700; }
