@@ -14,6 +14,7 @@ import type {
   WireEntity,
 } from "./types";
 import { toCodePoints } from "./lib/offsets";
+import { baseDirection, type Dir } from "./lib/direction";
 import { findOccurrences } from "./lib/matches";
 import { fragmentsKey, mergeFragments, toWireMention, wireFragments, wireImplicit, wireRelative } from "./lib/mentions";
 import type { WireMention } from "./types";
@@ -115,6 +116,7 @@ interface State {
   docId: string | null;
   text: string;
   cps: string[];
+  docDir: Dir; // base reading direction of the document (drives RTL fragment order)
   prediction: WireEntity[];
   entities: Entity[];
   status: DocStatus;
@@ -295,6 +297,7 @@ export const useStore = create<State>((set, get) => {
     docId: null,
     text: "",
     cps: [],
+    docDir: "ltr",
     prediction: [],
     entities: [],
     status: "unreviewed",
@@ -351,6 +354,7 @@ export const useStore = create<State>((set, get) => {
         docId: null,
         text: "",
         cps: [],
+        docDir: "ltr",
         prediction: [],
         entities: [],
         comments: [],
@@ -395,6 +399,7 @@ export const useStore = create<State>((set, get) => {
           docId: doc.doc_id,
           text: doc.text,
           cps: toCodePoints(doc.text),
+          docDir: baseDirection(doc.text),
           prediction: doc.prediction,
           entities,
           status: doc.status,
