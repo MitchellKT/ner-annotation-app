@@ -175,6 +175,9 @@ kbd {
 .chip.hover { outline: 1px solid var(--accent); }
 /* A text span is selected; clicking adds it to this mention as an extra fragment. */
 .chip.pick-target:hover { outline: 1px dashed var(--accent); background: var(--accent-soft); cursor: copy; }
+/* Fragment group: its own flex box so `dir` orders the fragments in document
+   reading order (RTL docs read right-to-left) without moving the chip controls. */
+.chip .frags { display: inline-flex; align-items: center; gap: 5px; }
 .chip .x { color: var(--muted); cursor: pointer; font-weight: 700; }
 .chip .x:hover { color: var(--danger); }
 .chip .added { color: var(--ok); font-weight: 700; }

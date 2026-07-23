@@ -11,6 +11,7 @@ interface Props {
 
 export function MentionChip({ entityId, mention, added }: Props) {
   const cps = useStore((s) => s.cps);
+  const docDir = useStore((s) => s.docDir);
   const removeMention = useStore((s) => s.removeMention);
   const removeFragment = useStore((s) => s.removeFragment);
   const addFragment = useStore((s) => s.addFragment);
@@ -86,28 +87,34 @@ export function MentionChip({ entityId, mention, added }: Props) {
       >
         ↳
       </span>
-      {mention.fragments.map((f, i) => {
-        const surface = cpSlice(cps, f.start, f.end);
-        return (
-          <Fragment key={`${f.start}:${f.end}`}>
-            {i > 0 && <span className="frag-gap" title="non-continuous mention">‥</span>}
-            {/* <bdi> isolates RTL surface text so it doesn't reorder controls */}
-            <bdi>{surface || "∅"}</bdi>
-            {discontinuous && (
-              <span
-                className="x"
-                title="remove this fragment"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  removeFragment(entityId, mention.id, i);
-                }}
-              >
-                ×
-              </span>
-            )}
-          </Fragment>
-        );
-      })}
+      {/* The fragments are stored in logical (offset) order; lay them out in the
+          document's reading direction so a discontinuous mention in RTL text
+          reads right-to-left, matching the source. Controls stay put outside. */}
+      <span className="frags" dir={docDir}>
+        {mention.fragments.map((f, i) => {
+          const surface = cpSlice(cps, f.start, f.end);
+          return (
+            <Fragment key={`${f.start}:${f.end}`}>
+              {i > 0 && <span className="frag-gap" title="non-continuous mention">‥</span>}
+              {/* <bdi> isolates each fragment's surface text so its own bidi
+                  run doesn't leak into the sibling controls or fragments */}
+              <bdi>{surface || "∅"}</bdi>
+              {discontinuous && (
+                <span
+                  className="x"
+                  title="remove this fragment"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    removeFragment(entityId, mention.id, i);
+                  }}
+                >
+                  ×
+                </span>
+              )}
+            </Fragment>
+          );
+        })}
+      </span>
       {!discontinuous && (
         <span
           className="x"
