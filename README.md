@@ -49,6 +49,12 @@ Input and output are the same `.jsonl` schema, one record per line:
   directly. It is written as `{"start": ..., "end": ..., "relative": true}` (or with `"fragments"`
   for a non-continuous relative mention). Mentions are **not** relative by default, and like `uid`
   and `tags` the flag is omitted when false, so files without relative mentions keep the original schema.
+- A mention may be marked **`"implicit"`**: it names its entity *directly* but in a non-subject,
+  background role — the entity is not what the sentence is about — e.g. *"Maxim"* in *"I went to the
+  theatre with Maxim's brother"*. It is written as `{"start": ..., "end": ..., "implicit": true}`
+  (or with `"fragments"`), defaults to **false**, and is omitted when false, so files without
+  implicit mentions keep the original schema. `"relative"` and `"implicit"` are **independent**: a
+  mention may carry neither, either, or both.
 - A mention may be **non-continuous**: a single mention made of several disjoint *fragments*,
   written as `{"fragments": [{"start": ..., "end": ...}, ...]}` in place of `{"start", "end"}`.
   E.g. in *"Annie and George Washington"*, the mention "Annie Washington" is
@@ -188,6 +194,7 @@ shows the live `1 PER · 2 LOC · …` legend so you always know which number is
 | `m` | Merge: press `m`, then click another entity (or drag card onto card) |
 | `s` | Split the hovered mention into its own entity |
 | `R` | Toggle **relative** on a mention (hovered mention, else the active entity's last) |
+| `I` | Toggle **implicit** on a mention (hovered mention, else the active entity's last) |
 | drag chip → card | Reassign a mention to another entity |
 | `Esc` | Cancel a pending merge / clear selection |
 | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
@@ -236,13 +243,25 @@ present in `--input` seed it.
 
 **Relative mentions.** A mention is *relative* when it points at its entity only through a
 relation to another — *"father of Abraham"*, *"John's secretary"*, *"the company's CEO"* — instead
-of naming it outright. Mentions start **not relative**; toggle the flag with the `↳` handle on the
-mention's chip, the `↳` button in a mention's action bar (click the mention in the text), or by
+of naming it outright. Mentions start **not relative**; toggle the flag with the `↪` handle on the
+mention's chip, the `↪` button in a mention's action bar (click the mention in the text), or by
 pressing `R` (acts on the hovered mention, else the active entity's last mention).
 Relative mentions are set apart everywhere they show by a **diagonal hatch** over their box: the
-chip carries the stripes (with a dashed border and the `↳` lit), and the mention's highlight in the
+chip carries the stripes (with a dashed border and the `↪` lit), and the mention's highlight in the
 document text is hatched to match. The flag is saved per mention as `"relative": true` and is purely
 descriptive — it does not change the entity's type or clustering.
+
+**Implicit mentions.** A mention is *implicit* when it names its entity **directly but not as the
+subject** — the entity is present in a background / oblique role rather than being what the sentence
+is about — e.g. *"Maxim"* in *"I went to the theatre with Maxim's brother"*. This is distinct from a
+relative mention (which doesn't name the entity at all, only a relation to it); the two flags are
+**independent**, so a mention may be neither, either, or both. Mentions start **not implicit**;
+toggle the flag with the `◌` handle on the mention's chip, the `◌` button in a mention's action bar,
+or by pressing `I` (hovered mention, else the active entity's last). Implicit mentions are marked by
+a **dotted overlay** (in violet on the lit `◌` handle) — a distinct texture and colour from the
+relative hatch — over the chip and the highlight in the text, so a mention that is both shows both
+patterns. The flag is saved per mention as `"implicit": true` and, like `"relative"`, is purely
+descriptive.
 
 **Non-continuous mentions.** To annotate e.g. "Annie Washington" in *"Annie and George
 Washington"*: select "Annie", press its type digit (a new entity + mention), then select

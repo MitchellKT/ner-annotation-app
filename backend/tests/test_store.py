@@ -560,3 +560,43 @@ def test_relative_defaults_false_and_is_omitted():
     assert m.relative is False
     m2 = Mention.model_validate({"fragments": [{"start": 0, "end": 5}]})
     assert m2.relative is False
+
+
+def test_implicit_mentions_round_trip(tmp_path):
+    inp = tmp_path / "in.jsonl"
+    out = tmp_path / "out.jsonl"
+    text = "I went to the theatre with Maxim's brother."
+    write_jsonl(inp, [{"doc_id": "d1", "text": text, "entities": [
+        # An implicit mention: "Maxim" is named directly but is not the subject.
+        {"type": "PER", "mentions": [{"start": 27, "end": 32, "implicit": True}]},
+        # A mention that is both relative and implicit stays both.
+        {"type": "PER", "mentions": [
+            {"fragments": [{"start": 27, "end": 32}, {"start": 35, "end": 42}],
+             "relative": True, "implicit": True}
+        ]},
+        # An ordinary mention keeps the original shape (no `implicit` key).
+        {"type": "LOC", "mentions": [{"start": 10, "end": 21}]},
+    ]}])
+    store = Store(inp, out)
+    d1 = store.get_doc("d1")
+    assert d1["entities"][0]["mentions"][0] == {"start": 27, "end": 32, "implicit": True}
+    assert d1["entities"][1]["mentions"][0] == {
+        "fragments": [{"start": 27, "end": 32}, {"start": 35, "end": 42}],
+        "relative": True, "implicit": True,
+    }
+    # Non-implicit mentions never gain an `implicit` key.
+    assert d1["entities"][2]["mentions"][0] == {"start": 10, "end": 21}
+
+    store.save_doc("d1", d1["entities"], status="done")
+    rec = json.loads(out.read_text(encoding="utf-8").strip().splitlines()[0])
+    assert rec["entities"] == d1["entities"]
+    # Resume parses the flag back on both mention shapes.
+    assert Store(inp, out).get_doc("d1")["entities"] == d1["entities"]
+
+
+def test_implicit_defaults_false_and_is_omitted():
+    # Absent flag => not implicit, and it stays out of the serialized shape.
+    m = Mention.model_validate({"start": 0, "end": 5})
+    assert m.implicit is False
+    m2 = Mention.model_validate({"fragments": [{"start": 0, "end": 5}]})
+    assert m2.implicit is False

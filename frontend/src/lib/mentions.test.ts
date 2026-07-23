@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fragmentsKey, mergeFragments, toWireMention, wireFragments, wireRelative } from "./mentions";
+import { fragmentsKey, mergeFragments, toWireMention, wireFragments, wireImplicit, wireRelative } from "./mentions";
 
 describe("mergeFragments", () => {
   it("sorts fragments by start", () => {
@@ -79,6 +79,38 @@ describe("wire round-trip", () => {
     expect(wireRelative({ start: 3, end: 9 })).toBe(false);
     expect(wireRelative({ start: 3, end: 9, relative: true })).toBe(true);
     expect(wireRelative({ fragments: [{ start: 0, end: 5 }], relative: true })).toBe(true);
+  });
+
+  it("omits the implicit flag when the mention is not implicit", () => {
+    expect(toWireMention([{ start: 3, end: 9 }], false, false)).toEqual({ start: 3, end: 9 });
+    expect(toWireMention([{ start: 3, end: 9 }])).not.toHaveProperty("implicit");
+  });
+
+  it("writes the implicit flag on continuous and non-continuous mentions", () => {
+    expect(toWireMention([{ start: 3, end: 9 }], false, true)).toEqual({
+      start: 3,
+      end: 9,
+      implicit: true,
+    });
+    expect(toWireMention([{ start: 0, end: 5 }, { start: 17, end: 27 }], false, true)).toEqual({
+      fragments: [{ start: 0, end: 5 }, { start: 17, end: 27 }],
+      implicit: true,
+    });
+  });
+
+  it("writes both flags together, relative before implicit", () => {
+    expect(toWireMention([{ start: 3, end: 9 }], true, true)).toEqual({
+      start: 3,
+      end: 9,
+      relative: true,
+      implicit: true,
+    });
+  });
+
+  it("reads the implicit flag from either wire form (absent = not implicit)", () => {
+    expect(wireImplicit({ start: 3, end: 9 })).toBe(false);
+    expect(wireImplicit({ start: 3, end: 9, implicit: true })).toBe(true);
+    expect(wireImplicit({ fragments: [{ start: 0, end: 5 }], implicit: true })).toBe(true);
   });
 });
 

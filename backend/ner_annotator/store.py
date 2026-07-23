@@ -45,10 +45,12 @@ def _mention_to_json(mention: Mention) -> dict:
         out: dict = {"start": f.start, "end": f.end}
     else:
         out = {"fragments": [{"start": f.start, "end": f.end} for f in mention.fragments]}
-    # Only written when set, so ordinary (non-relative) mentions keep the
-    # original on-disk shape.
+    # Only written when set, so ordinary (non-relative, non-implicit) mentions
+    # keep the original on-disk shape.
     if mention.relative:
         out["relative"] = True
+    if mention.implicit:
+        out["implicit"] = True
     return out
 
 
@@ -266,7 +268,9 @@ class Store:
                 if key in seen:
                     continue
                 seen.add(key)
-                mentions.append(Mention(fragments=fragments, relative=m.relative))
+                mentions.append(
+                    Mention(fragments=fragments, relative=m.relative, implicit=m.implicit)
+                )
             if mentions:
                 cleaned.append(
                     Entity(

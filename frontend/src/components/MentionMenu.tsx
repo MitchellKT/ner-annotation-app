@@ -21,6 +21,7 @@ export function MentionMenu() {
   const removeMention = useStore((s) => s.removeMention);
   const splitMention = useStore((s) => s.splitMention);
   const toggleMentionRelative = useStore((s) => s.toggleMentionRelative);
+  const toggleMentionImplicit = useStore((s) => s.toggleMentionImplicit);
   const toggleReviewed = useStore((s) => s.toggleReviewed);
   const setEntityType = useStore((s) => s.setEntityType);
   const openTagPrompt = useStore((s) => s.openTagPrompt);
@@ -147,7 +148,18 @@ export function MentionMenu() {
         }
         onClick={() => toggleMentionRelative(entity.id, mention.id)}
       >
-        ↳
+        ↪
+      </button>
+      <button
+        className={"icon-btn mm-implicit" + (mention.implicit ? " on" : "")}
+        title={
+          mention.implicit
+            ? "implicit mention (entity is not the subject, e.g. “Maxim” in “Maxim’s brother”) — click to make explicit (I)"
+            : "mark as an implicit mention — entity is not the subject, e.g. “Maxim” in “Maxim’s brother” (I)"
+        }
+        onClick={() => toggleMentionImplicit(entity.id, mention.id)}
+      >
+        ◌
       </button>
       <button
         className="icon-btn"

@@ -119,6 +119,20 @@ export function useKeyboard(toggleHelp: () => void) {
           s.toggleMentionRelative(owner.id, mention.id);
           return;
         }
+        case "I": {
+          // Toggle "implicit" on a mention (entity not the subject): the hovered
+          // one, else the active entity's last mention (mirrors `R`).
+          const owner = s.hoverMentionId
+            ? s.entities.find((en) => en.mentions.some((m) => m.id === s.hoverMentionId))
+            : s.entities.find((en) => en.id === s.activeEntityId);
+          if (!owner || owner.mentions.length === 0) return;
+          const mention = s.hoverMentionId
+            ? owner.mentions.find((m) => m.id === s.hoverMentionId)!
+            : owner.mentions[owner.mentions.length - 1];
+          e.preventDefault();
+          s.toggleMentionImplicit(owner.id, mention.id);
+          return;
+        }
         case "s": {
           if (s.hoverMentionId) {
             const owner = s.entities.find((en) => en.mentions.some((m) => m.id === s.hoverMentionId));
