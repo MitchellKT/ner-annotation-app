@@ -89,19 +89,31 @@ class Mention(BaseModel):
     # naming it directly. Defaults to False; omitted from the output when False,
     # so files without relative mentions keep the original schema.
     relative: bool = False
+    # An *implicit* mention names its entity directly but in a non-subject,
+    # background role — the entity is not what the sentence is about (e.g.
+    # "Maxim" in "I went to the theatre with Maxim's brother"). Like ``relative``
+    # it is a purely descriptive flag, defaults to False, and is omitted from the
+    # output when False, so files without implicit mentions keep the schema. The
+    # two flags are independent: a mention may be neither, either, or both.
+    implicit: bool = False
 
     @model_validator(mode="before")
     @classmethod
     def _coerce_forms(cls, value: Any) -> Any:
         # Accept the continuous forms — {"start","end"} or [start, end] — as a
         # single-fragment mention, plus the explicit {"fragments": [...]} form.
-        # The mention-level ``relative`` flag rides along on the continuous
-        # {"start","end","relative"} form, so lift it out before wrapping the
-        # span as the sole fragment (Fragment ignores the extra key otherwise).
+        # The mention-level ``relative`` / ``implicit`` flags ride along on the
+        # continuous {"start","end","relative","implicit"} form, so lift them out
+        # before wrapping the span as the sole fragment (Fragment ignores the
+        # extra keys otherwise).
         if isinstance(value, (list, tuple)):
             return {"fragments": [value]}
         if isinstance(value, dict) and "fragments" not in value:
-            return {"fragments": [value], "relative": value.get("relative", False)}
+            return {
+                "fragments": [value],
+                "relative": value.get("relative", False),
+                "implicit": value.get("implicit", False),
+            }
         return value
 
     @model_validator(mode="after")

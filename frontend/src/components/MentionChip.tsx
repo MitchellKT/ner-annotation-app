@@ -16,6 +16,7 @@ export function MentionChip({ entityId, mention, added }: Props) {
   const removeFragment = useStore((s) => s.removeFragment);
   const addFragment = useStore((s) => s.addFragment);
   const toggleMentionRelative = useStore((s) => s.toggleMentionRelative);
+  const toggleMentionImplicit = useStore((s) => s.toggleMentionImplicit);
   const requestScrollTo = useStore((s) => s.requestScrollTo);
   const setHoverMention = useStore((s) => s.setHoverMention);
   const hoverMentionId = useStore((s) => s.hoverMentionId);
@@ -45,6 +46,7 @@ export function MentionChip({ entityId, mention, added }: Props) {
         "chip" +
         (hoverMentionId === mention.id ? " hover" : "") +
         (mention.relative ? " relative" : "") +
+        (mention.implicit ? " implicit" : "") +
         // With a span selected, clicking this chip adds it as an extra fragment.
         (selectionSpan ? " pick-target" : "")
       }
@@ -69,6 +71,7 @@ export function MentionChip({ entityId, mention, added }: Props) {
       title={
         mention.fragments.map((f) => `[${f.start}, ${f.end})`).join(" + ") +
         (mention.relative ? " — relative mention" : "") +
+        (mention.implicit ? " — implicit mention" : "") +
         " — click to locate (with text selected: add as fragment), drag onto another entity to reassign, drag out (onto empty space or off its own card) to split into a new entity"
       }
     >
@@ -85,7 +88,21 @@ export function MentionChip({ entityId, mention, added }: Props) {
           toggleMentionRelative(entityId, mention.id);
         }}
       >
-        ↳
+        ↪
+      </span>
+      <span
+        className={"impl-toggle" + (mention.implicit ? " on" : "")}
+        title={
+          mention.implicit
+            ? "implicit mention (entity is not the subject, e.g. “Maxim” in “Maxim’s brother”) — click to make explicit (I)"
+            : "mark as an implicit mention — entity is not the subject, e.g. “Maxim” in “Maxim’s brother” (I)"
+        }
+        onClick={(e) => {
+          e.stopPropagation();
+          toggleMentionImplicit(entityId, mention.id);
+        }}
+      >
+        ◌
       </span>
       {/* The fragments are stored in logical (offset) order; lay them out in the
           document's reading direction so a discontinuous mention in RTL text

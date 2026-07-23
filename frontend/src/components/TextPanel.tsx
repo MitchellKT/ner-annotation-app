@@ -36,6 +36,15 @@ export function TextPanel() {
     return ids;
   }, [entities]);
 
+  // Mentions flagged "implicit" (entity not the subject) get their own look —
+  // a dotted overlay — distinct from the relative hatch and stackable with it.
+  const implicitMentionIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const e of entities)
+      for (const mn of e.mentions) if (mn.implicit) ids.add(mn.id);
+    return ids;
+  }, [entities]);
+
   // mentionId -> its owning entity, size (total fragment length) and stacking
   // order. Used to pick a click target when several mentions cover one spot:
   // the shortest mention wins, so one strictly contained in another (e.g.
@@ -145,12 +154,21 @@ export function TextPanel() {
             .join(", ");
 
           // A relative mention (refers via a relation, e.g. "father of Abraham")
-          // is marked by a diagonal hatch over its fill — a layer that sits above
-          // the tint but below the underline bars.
+          // is marked by a diagonal hatch, and an implicit mention (entity not
+          // the subject, e.g. "Maxim" in "Maxim's brother") by a dotted overlay —
+          // layers that sit above the tint but below the underline bars. The two
+          // are independent, so a mention that is both stacks both patterns.
           const isRelative = seg.mentionIds.some((id) => relativeMentionIds.has(id));
+          const isImplicit = seg.mentionIds.some((id) => implicitMentionIds.has(id));
           const hatch =
             "repeating-linear-gradient(-45deg, rgba(30,41,59,0.16) 0, rgba(30,41,59,0.16) 3px, transparent 3px, transparent 7px)";
-          const fill = isRelative ? `${hatch}, ${tint}` : tint;
+          const dots =
+            "radial-gradient(rgba(30,41,59,0.28) 1.1px, transparent 1.3px) 0 0 / 5px 5px";
+          const fill = [
+            ...(isRelative ? [hatch] : []),
+            ...(isImplicit ? [dots] : []),
+            tint,
+          ].join(", ");
 
           // A specific mention hover (hovering its chip) narrows the highlight to
           // just that mention, even though the chip sits inside its entity card —
@@ -163,7 +181,7 @@ export function TextPanel() {
           return (
             <span
               key={seg.start}
-              className={"seg covered" + (isRelative ? " relative" : "")}
+              className={"seg covered" + (isRelative ? " relative" : "") + (isImplicit ? " implicit" : "")}
               data-start={seg.start}
               data-end={seg.end}
               style={{

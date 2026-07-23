@@ -16,7 +16,7 @@ import type {
 import { toCodePoints } from "./lib/offsets";
 import { baseDirection, type Dir } from "./lib/direction";
 import { findOccurrences } from "./lib/matches";
-import { fragmentsKey, mergeFragments, toWireMention, wireFragments, wireRelative } from "./lib/mentions";
+import { fragmentsKey, mergeFragments, toWireMention, wireFragments, wireImplicit, wireRelative } from "./lib/mentions";
 import type { WireMention } from "./types";
 
 let _uid = 0;
@@ -49,6 +49,7 @@ function toClientEntities(doc: DocData): Entity[] {
         id: uid("m"),
         fragments: wireFragments(m).map((f) => ({ start: f.start, end: f.end })),
         relative: wireRelative(m),
+        implicit: wireImplicit(m),
       })),
       uid: e.uid,
       tags: e.tags ?? [],
@@ -63,7 +64,7 @@ function toWire(entities: Entity[]): WireEntity[] {
     .filter((e) => e.mentions.length > 0)
     .map((e) => ({
       type: e.type,
-      mentions: e.mentions.map((m) => toWireMention(m.fragments, m.relative)),
+      mentions: e.mentions.map((m) => toWireMention(m.fragments, m.relative, m.implicit)),
       ...(e.uid ? { uid: e.uid } : {}),
       ...(e.tags.length ? { tags: e.tags } : {}),
     }));
@@ -183,6 +184,7 @@ interface State {
   addFragment: (entityId: string, mentionId: string, span: { start: number; end: number }) => void;
   removeFragment: (entityId: string, mentionId: string, fragmentIndex: number) => void;
   toggleMentionRelative: (entityId: string, mentionId: string) => void;
+  toggleMentionImplicit: (entityId: string, mentionId: string) => void;
   newEmptyEntity: () => void;
   removeMention: (entityId: string, mentionId: string) => void;
   reassignMention: (mentionId: string, fromId: string, toId: string) => void;
@@ -531,6 +533,7 @@ export const useStore = create<State>((set, get) => {
             id: uid("m"),
             fragments: [{ start: sp.start, end: sp.end }],
             relative: false,
+            implicit: false,
           }))
         ),
         tags: [],
@@ -548,6 +551,7 @@ export const useStore = create<State>((set, get) => {
         id: uid("m"),
         fragments: [{ start: sp.start, end: sp.end }],
         relative: false,
+        implicit: false,
       }));
       mutate((entities) =>
         entities.map((e) =>
@@ -609,6 +613,21 @@ export const useStore = create<State>((set, get) => {
                 ...e,
                 mentions: e.mentions.map((m) =>
                   m.id === mentionId ? { ...m, relative: !m.relative } : m
+                ),
+              }
+            : e
+        )
+      );
+    },
+
+    toggleMentionImplicit(entityId, mentionId) {
+      mutate((entities) =>
+        entities.map((e) =>
+          e.id === entityId
+            ? {
+                ...e,
+                mentions: e.mentions.map((m) =>
+                  m.id === mentionId ? { ...m, implicit: !m.implicit } : m
                 ),
               }
             : e
