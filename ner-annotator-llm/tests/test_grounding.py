@@ -1,6 +1,6 @@
 import pytest
 
-from ner_annotator.llm.grounding import (
+from ner_annotator_llm.grounding import (
     DUPLICATE_MENTION,
     EMPTY_MENTION,
     MENTION_NOT_FOUND,
@@ -9,7 +9,7 @@ from ner_annotator.llm.grounding import (
     entities_to_json,
     resolve_entities,
 )
-from ner_annotator.llm.schema import EntityCandidate, MentionCandidate, split_fragments
+from ner_annotator_llm.schema import EntityCandidate, MentionCandidate, split_fragments
 
 
 def entity(*mentions, name="e", type="PER"):

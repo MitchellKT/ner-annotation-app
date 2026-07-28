@@ -6,8 +6,8 @@ import pytest
 
 dspy = pytest.importorskip("dspy")
 
-from ner_annotator.llm import AnnotateEntities, EntityAnnotator  # noqa: E402
-from ner_annotator.llm.schema import EntityCandidate, MentionCandidate  # noqa: E402
+from ner_annotator_llm import AnnotateEntities, EntityAnnotator  # noqa: E402
+from ner_annotator_llm.schema import EntityCandidate, MentionCandidate  # noqa: E402
 
 TEXT = "Annie and George Washington visited Mount Vernon. Annie waved."
 

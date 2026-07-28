@@ -1,13 +1,13 @@
 """LLM-assisted annotation: a DSPy signature plus grounding to character offsets.
 
-This package is **self-contained**: it imports nothing from the rest of the
-application, so the directory can be copied into another project as-is. Its only
-third-party dependencies are pydantic (schema) and DSPy (signature only).
+The LLM quotes text rather than counting characters: every mention comes back as
+its surface form plus the sentence around it (fragments of a split mention
+joined by ``[…]``), and :mod:`.grounding` turns that into character offsets.
 
 The pieces split by dependency: :mod:`.schema`, :mod:`.guidelines` and
 :mod:`.grounding` are plain pydantic/stdlib and always importable, while
 :mod:`.signatures` needs DSPy and is therefore imported lazily — ``from
-ner_annotator.llm import EntityAnnotator`` raises only if DSPy is genuinely
+ner_annotator_llm import EntityAnnotator`` raises only if DSPy is genuinely
 missing.
 """
 

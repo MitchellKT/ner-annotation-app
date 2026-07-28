@@ -6,7 +6,7 @@ The only module here that needs DSPy (``pip install dspy``); :mod:`.schema`,
 Usage::
 
     import dspy
-    from ner_annotator.llm import EntityAnnotator
+    from ner_annotator_llm import EntityAnnotator
 
     dspy.configure(lm=dspy.LM("anthropic/claude-sonnet-5"))
     annotator = EntityAnnotator(entity_type="PER")
