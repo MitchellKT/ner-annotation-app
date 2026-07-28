@@ -1,7 +1,7 @@
 """DSPy signature and module for LLM annotation.
 
-Requires the optional ``llm`` extra (``pip install -e ".[llm]"``); the rest of
-:mod:`ner_annotator.llm` works without DSPy installed.
+The only module here that needs DSPy (``pip install dspy``); :mod:`.schema`,
+:mod:`.guidelines` and :mod:`.grounding` work without it.
 
 Usage::
 
@@ -10,8 +10,8 @@ Usage::
 
     dspy.configure(lm=dspy.LM("anthropic/claude-sonnet-5"))
     annotator = EntityAnnotator(entity_type="PER")
-    prediction = annotator(document=doc["text"])
-    prediction.entities   # on-schema entities, ready for the store
+    prediction = annotator(document=text)
+    prediction.entities   # entities in the annotation schema, ready to store
     prediction.problems   # mentions that could not be grounded
 
 The signature is deliberately type-agnostic: the entity type and its guidelines
@@ -25,7 +25,6 @@ from typing import List, Optional
 
 import dspy
 
-from ..store import entity_to_json
 from .grounding import Resolution, resolve_entities, unicode_safe
 from .guidelines import guidelines_for
 from .schema import EntityCandidate
@@ -76,11 +75,11 @@ class EntityAnnotator(dspy.Module):
 
     ``forward`` returns a :class:`dspy.Prediction` with:
 
-    ``entities``    on-schema entity dicts (``{"type", "mentions": [{"start",
-                    "end"} | {"fragments": [...]}]}``) ready for
-                    ``Store.save_doc``;
-    ``resolution``  the :class:`~ner_annotator.llm.grounding.Resolution`
-                    (pydantic entities plus per-mention problems);
+    ``entities``    entity dicts in the annotation schema (``{"type",
+                    "mentions": [{"start", "end"} | {"fragments": [...]}]}``),
+                    ready to store;
+    ``resolution``  the :class:`~.grounding.Resolution` (entity objects plus
+                    per-mention problems);
     ``problems``    shorthand for ``resolution.problems``;
     ``candidates``  the raw quoted prediction, useful when debugging a drop.
     """
@@ -105,22 +104,14 @@ class EntityAnnotator(dspy.Module):
             entity_type=self.entity_type,
             document=text,
         )
-        candidates = [_as_candidate(c, self.entity_type) for c in (prediction.entities or [])]
+        candidates = prediction.entities or []
         resolution: Resolution = resolve_entities(
             text, candidates, default_type=self.entity_type
         )
         return dspy.Prediction(
-            entities=[entity_to_json(e) for e in resolution.entities],
+            entities=resolution.to_json(),
             resolution=resolution,
             problems=resolution.problems,
             candidates=candidates,
             text=text,
         )
-
-
-def _as_candidate(value: object, entity_type: str) -> EntityCandidate:
-    """Accept both parsed candidates and raw dicts from the adapter."""
-    candidate = value if isinstance(value, EntityCandidate) else EntityCandidate.model_validate(value)
-    if not candidate.type:
-        candidate.type = entity_type
-    return candidate

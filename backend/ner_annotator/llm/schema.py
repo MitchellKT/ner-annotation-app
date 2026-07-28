@@ -12,8 +12,8 @@ A **non-continuous** mention is written as its fragments joined by
 ``[…]`` — e.g. ``"Annie[…]Washington"`` for the mention *Annie Washington* in
 *"Annie and George Washington visited Mount Vernon."*.
 
-:mod:`ner_annotator.llm.grounding` turns this into the on-disk schema
-(:class:`~ner_annotator.models.Entity` with character-level fragments).
+:mod:`.grounding` turns this into the annotation schema
+(:class:`~.grounding.Entity` with character-level fragments).
 """
 
 from __future__ import annotations

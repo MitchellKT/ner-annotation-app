@@ -6,10 +6,10 @@ from ner_annotator.llm.grounding import (
     MENTION_NOT_FOUND,
     MENTION_OUTSIDE_SENTENCE,
     SENTENCE_NOT_FOUND,
+    entities_to_json,
     resolve_entities,
 )
 from ner_annotator.llm.schema import EntityCandidate, MentionCandidate, split_fragments
-from ner_annotator.store import entity_to_json
 
 
 def entity(*mentions, name="e", type="PER"):
@@ -75,7 +75,7 @@ def test_output_matches_on_disk_schema():
             entity(("George Washington", text), name="George Washington"),
         ],
     )
-    assert [entity_to_json(e) for e in res.entities] == [
+    assert entities_to_json(res.entities) == [
         {"type": "PER", "mentions": [{"fragments": [{"start": 0, "end": 5},
                                                     {"start": 17, "end": 27}]}]},
         {"type": "PER", "mentions": [{"start": 10, "end": 27}]},
@@ -91,7 +91,7 @@ def test_flags_ride_through():
             entity(("Maxim's brother", text, {"relative": True}), name="the brother"),
         ],
     )
-    assert [entity_to_json(e) for e in res.entities] == [
+    assert entities_to_json(res.entities) == [
         {"type": "PER", "mentions": [{"start": 27, "end": 32, "implicit": True}]},
         {"type": "PER", "mentions": [{"start": 27, "end": 42, "relative": True}]},
     ]
@@ -233,3 +233,19 @@ def test_resolution_counts():
     )
     assert res.n_mentions == 2
     assert res.n_dropped == 1
+
+
+def test_candidates_may_be_plain_dicts():
+    text = "Alice met Bob."
+    res = resolve_entities(
+        text,
+        [{"name": "Alice", "type": "", "mentions": [{"mention": "Alice", "sentence": text}]}],
+        default_type="PER",
+    )
+    assert entities_to_json(res.entities) == [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}]
+
+
+def test_adjacent_fragments_collapse_into_a_continuous_mention():
+    text = "Annie greeted Bob."
+    res = resolve_entities(text, [entity(("Ann[…]ie", text))])
+    assert entities_to_json(res.entities) == [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}]

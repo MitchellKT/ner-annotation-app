@@ -166,6 +166,11 @@ logging the failure once. Restarting with the same `--mongo-uri` re-syncs everyo
 `ner_annotator.llm` produces a **prediction to refine**: a DSPy signature that annotates one entity
 type at a time, plus the code that converts its answer into the `.jsonl` schema above.
 
+The package is **self-contained** — it imports nothing from the rest of the app (pydantic and, for
+the signature only, DSPy are its only dependencies), so the directory can be copied into a training
+pipeline or another project as-is. It carries its own `Entity` / `Mention` / `Fragment` dataclasses
+and `entities_to_json`, which emit exactly the shape described above.
+
 ```bash
 pip install -e ".[llm]"      # dspy is only needed for this
 ```
@@ -180,6 +185,10 @@ prediction = EntityAnnotator(entity_type="PER")(document=text)
 prediction.entities   # [{"type": "PER", "mentions": [{"start": 0, "end": 12}]}, ...] — on schema
 prediction.problems   # mentions that could not be grounded, with the reason
 ```
+
+Without DSPy, `resolve_entities(text, candidates)` grounds any quoted prediction on its own —
+`candidates` may be `EntityCandidate` objects or plain dicts in the same shape, so an LM called by
+other means works too.
 
 An LLM cannot count characters, so it is never asked for offsets. Each mention comes back as two
 verbatim quotations — the **mention** itself and the **sentence** around it, which says *which*

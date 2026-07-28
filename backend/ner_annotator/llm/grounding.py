@@ -1,12 +1,12 @@
 """Turn quoted LLM output into character-level annotations.
 
-The LLM returns mentions as text (see :mod:`ner_annotator.llm.schema`); the
-store wants ``{"start", "end"}`` code-point offsets over the document. This
-module bridges the two:
+The LLM returns mentions as text (see :mod:`.schema`); the annotation format
+wants ``{"start", "end"}`` code-point offsets over the document. This module
+bridges the two:
 
 1. the mention's **sentence** is located in the document, which gives a window;
 2. the mention's **fragments** are located inside that window, in order, which
-   gives one :class:`~ner_annotator.models.Fragment` each;
+   gives one :class:`Fragment` each;
 3. offsets are mapped back to the *original* text.
 
 Matching is done on a normalised copy of the text (whitespace collapsed, case
@@ -15,6 +15,11 @@ per-character index map back to the original, so a model that retypes
 ``"He said “hi”"`` as ``"He said "hi""`` — or reflows a line break into a space —
 still lands on the right characters. Nothing that fails to match is invented:
 unresolvable mentions are dropped and reported in :class:`Resolution.problems`.
+
+The :class:`Entity` / :class:`Mention` / :class:`Fragment` types here are plain
+dataclasses that serialise to the annotation schema via
+:func:`entities_to_json`; nothing in this package imports the surrounding
+application, so it can be copied out and used on its own.
 """
 
 from __future__ import annotations
@@ -22,9 +27,8 @@ from __future__ import annotations
 import difflib
 import unicodedata
 from dataclasses import dataclass, field
-from typing import Iterable, Iterator, List, Optional, Sequence, Tuple
+from typing import Any, Iterable, Iterator, List, Optional, Sequence, Tuple
 
-from ..models import Entity, Fragment, Mention
 from .schema import EntityCandidate, MentionCandidate, split_fragments
 
 # Characters that carry no textual content but are common in RTL/copy-pasted
@@ -60,6 +64,77 @@ DUPLICATE_MENTION = "duplicate-mention"
 
 
 @dataclass(frozen=True)
+class Fragment:
+    """One contiguous span, ``end`` exclusive, in code points over the text."""
+
+    start: int
+    end: int
+
+
+@dataclass
+class Mention:
+    """One reference to an entity: one fragment, or several for a split mention.
+
+    ``relative`` marks a mention that identifies its entity only through a
+    relation to something else ("John's secretary"); ``implicit`` marks one that
+    names the entity in a background role ("Maxim" in "with Maxim's brother").
+    The two are independent.
+    """
+
+    fragments: List[Fragment]
+    relative: bool = False
+    implicit: bool = False
+
+    def __post_init__(self) -> None:
+        if not self.fragments:
+            raise ValueError("mention must have at least one fragment")
+        self.fragments = merge_fragments(self.fragments)
+
+    def to_json(self) -> dict:
+        # Continuous mentions keep the plain {"start","end"} shape; only split
+        # ones use {"fragments": [...]}, and the flags are written only when
+        # set, so ordinary annotations stay on the minimal schema.
+        if len(self.fragments) == 1:
+            out: dict = {"start": self.fragments[0].start, "end": self.fragments[0].end}
+        else:
+            out = {"fragments": [{"start": f.start, "end": f.end} for f in self.fragments]}
+        if self.relative:
+            out["relative"] = True
+        if self.implicit:
+            out["implicit"] = True
+        return out
+
+
+@dataclass
+class Entity:
+    """One referent and every mention of it."""
+
+    type: str
+    mentions: List[Mention]
+
+    def to_json(self) -> dict:
+        return {"type": self.type, "mentions": [m.to_json() for m in self.mentions]}
+
+
+def merge_fragments(fragments: Sequence[Fragment]) -> List[Fragment]:
+    """Sort fragments and coalesce overlapping/adjacent ones."""
+    ordered = sorted(fragments, key=lambda f: (f.start, f.end))
+    merged = [ordered[0]]
+    for f in ordered[1:]:
+        last = merged[-1]
+        if f.start <= last.end:
+            merged[-1] = Fragment(start=last.start, end=max(last.end, f.end))
+        else:
+            merged.append(f)
+    return merged
+
+
+def entities_to_json(entities: Iterable[Entity]) -> List[dict]:
+    """Serialise entities to the annotation schema."""
+    return [e.to_json() for e in entities]
+
+
+@dataclass(frozen=True)
 class Problem:
     """One mention the grounding could not take at face value.
 
@@ -80,6 +155,10 @@ class Problem:
 class Resolution:
     entities: List[Entity] = field(default_factory=list)
     problems: List[Problem] = field(default_factory=list)
+
+    def to_json(self) -> List[dict]:
+        """The entities in the annotation schema, ready to store."""
+        return entities_to_json(self.entities)
 
     @property
     def n_mentions(self) -> int:
@@ -271,21 +350,26 @@ def _mention_key(mention: Mention) -> Tuple[Tuple[int, int], ...]:
 
 def resolve_entities(
     text: str,
-    candidates: Iterable[EntityCandidate],
+    candidates: Iterable[Any],
     *,
     default_type: str = "PER",
 ) -> Resolution:
-    """Convert predicted (quoted) entities into on-schema entities.
+    """Convert predicted (quoted) entities into offset-based entities.
 
-    ``text`` is the document exactly as it was shown to the model. Mentions are
-    resolved in the order given, and each resolved span is remembered so that
-    repeated surface forms map to successive occurrences.
+    ``text`` is the document exactly as it was shown to the model. Candidates
+    are :class:`~.schema.EntityCandidate` instances or anything that parses as
+    one (a plain dict from a raw LM response, say). Mentions are resolved in the
+    order given, and each resolved span is remembered so that repeated surface
+    forms map to successive occurrences.
     """
     doc = _Normalized(text)
     resolution = Resolution()
     taken: List[Tuple[int, int]] = []
 
-    for index, candidate in enumerate(candidates):
+    for index, value in enumerate(candidates):
+        candidate = (
+            value if isinstance(value, EntityCandidate) else EntityCandidate.model_validate(value)
+        )
         mentions: List[Mention] = []
         seen: set = set()
         for raw in candidate.mentions:
