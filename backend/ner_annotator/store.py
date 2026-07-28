@@ -37,7 +37,7 @@ VALID_STATUSES = ("unreviewed", "in_progress", "done")
 UNSPECIFIED = "unspecified"
 
 
-def _mention_to_json(mention: Mention) -> dict:
+def mention_to_json(mention: Mention) -> dict:
     # Single-fragment (continuous) mentions keep the original {"start","end"}
     # shape; only non-continuous mentions use the {"fragments": [...]} form.
     if len(mention.fragments) == 1:
@@ -54,10 +54,10 @@ def _mention_to_json(mention: Mention) -> dict:
     return out
 
 
-def _entity_to_json(entity: Entity) -> dict:
+def entity_to_json(entity: Entity) -> dict:
     out = {
         "type": entity.type,
-        "mentions": [_mention_to_json(m) for m in entity.mentions],
+        "mentions": [mention_to_json(m) for m in entity.mentions],
     }
     if entity.uid is not None:
         out["uid"] = entity.uid
@@ -384,8 +384,8 @@ class Store:
                 "source": d["source"],
                 "text": d["text"],
                 "status": self.status[doc_id],
-                "entities": [_entity_to_json(e) for e in d["entities"]],
-                "prediction": [_entity_to_json(e) for e in d["prediction"]],
+                "entities": [entity_to_json(e) for e in d["entities"]],
+                "prediction": [entity_to_json(e) for e in d["prediction"]],
                 "comments": self.comments(doc_id),
             }
 
@@ -445,7 +445,7 @@ class Store:
         record = {
             "doc_id": doc_id,
             "text": d["text"],
-            "entities": [_entity_to_json(e) for e in d["entities"]],
+            "entities": [entity_to_json(e) for e in d["entities"]],
         }
         # Like ``uid`` / ``tags``: written only when there is something to write,
         # so a corpus nobody has commented on keeps the original shape.

@@ -161,6 +161,45 @@ annotator's whole output, so annotations made before the mirror was switched on 
 Export is best-effort: if MongoDB is unreachable the app still runs and still writes `.jsonl`,
 logging the failure once. Restarting with the same `--mongo-uri` re-syncs everyone as they log in.
 
+### LLM-generated annotations (DSPy)
+
+`ner_annotator.llm` produces a **prediction to refine**: a DSPy signature that annotates one entity
+type at a time, plus the code that converts its answer into the `.jsonl` schema above.
+
+```bash
+pip install -e ".[llm]"      # dspy is only needed for this
+```
+
+```python
+import dspy
+from ner_annotator.llm import EntityAnnotator
+
+dspy.configure(lm=dspy.LM("anthropic/claude-sonnet-5"))
+prediction = EntityAnnotator(entity_type="PER")(document=text)
+
+prediction.entities   # [{"type": "PER", "mentions": [{"start": 0, "end": 12}]}, ...] — on schema
+prediction.problems   # mentions that could not be grounded, with the reason
+```
+
+An LLM cannot count characters, so it is never asked for offsets. Each mention comes back as two
+verbatim quotations — the **mention** itself and the **sentence** around it, which says *which*
+occurrence of "Obama" is meant — and a non-continuous mention is written as its fragments joined by
+`[…]`, e.g. `"Annie[…]Washington"`. `relative` and `implicit` are plain booleans on the mention.
+
+`grounding.resolve_entities(text, candidates)` turns that back into character offsets: it locates
+the sentence, then places each fragment inside that window, left to right with backtracking, and
+maps the result to the original string. Matching runs over a normalised copy (whitespace collapsed,
+case folded, curly quotes/dashes flattened, bidi marks dropped) with an index map back to the
+source, so a model that reflows a line break or straightens a quote still lands on the right
+characters. Repeated surface forms are handed out in reading order, and a sentence that cannot be
+found falls back to a fuzzy window and then to the whole document. **Nothing is invented**: a
+mention that does not match is dropped and reported in `problems`, and an entity left with no
+mentions is pruned.
+
+The entity type and its guidelines are *input fields*, not part of the task text — `PER` guidelines
+live in `llm/guidelines.py`, and the other types get a placeholder to fill in. Run it per type and
+concatenate the entity lists, or hand the guidelines to a DSPy optimiser.
+
 ### Development (hot reload)
 
 ```bash
@@ -296,6 +335,7 @@ cd frontend && npm test                # segment tiling + offset/selection logic
 ```
 backend/ner_annotator/   models.py · store.py · workspace.py            (per-user file I/O)
                          mongo.py                                       (optional MongoDB mirror)
+                         llm/signatures.py · llm/grounding.py           (DSPy annotation + offsets)
                          main.py · __main__.py                          (FastAPI app + CLI)
 frontend/src/            lib/segments.ts · lib/offsets.ts               (rendering & selection core)
                          store.ts · api.ts · components/ · hooks/       (UI, incl. login + source select)

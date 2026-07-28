@@ -14,6 +14,11 @@ dependencies = [
 mongo = [
     "pymongo>=4.6",
 ]
+# Only needed for ner_annotator.llm.signatures (LLM-generated annotations);
+# the grounding code and the app itself run without it.
+llm = [
+    "dspy>=2.6",
+]
 dev = [
     "pytest>=8.0",
     "httpx>=0.27",
