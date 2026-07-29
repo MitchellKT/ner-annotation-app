@@ -173,28 +173,35 @@ cd frontend && npm run dev      # http://localhost:5173
 ## LLM-generated predictions
 
 `ner-annotator-llm/` is a **separate, installable package** (`pip install ./ner-annotator-llm[dspy]`)
-that produces a prediction to refine: a DSPy signature that annotates one entity type at a time,
-plus the code that grounds its answer into the `.jsonl` schema above. It depends on nothing in this
-app, so it can also be published or vendored on its own.
+that produces a prediction to refine: a DSPy signature that annotates a document with an LLM, plus
+the code that grounds its answer into the `.jsonl` schema above. It depends on nothing in this app,
+so it can also be published or vendored on its own.
 
 ```python
 import dspy
 from ner_annotator_llm import EntityAnnotator
 
 dspy.configure(lm=dspy.LM("anthropic/claude-sonnet-5"))
-prediction = EntityAnnotator(entity_type="PER")(document=text)
+prediction = EntityAnnotator()(document=text)
 prediction.entities   # [{"type": "PER", "mentions": [{"start": 0, "end": 12}]}, ...] — on schema
 prediction.problems   # mentions that could not be grounded, with the reason
 ```
 
-An LLM cannot count characters, so it is never asked for offsets: each mention comes back as the
-**mention** text plus the **sentence** around it (which says *which* "Obama" is meant), with
-non-continuous mentions written as `"Annie[…]Washington"`. Grounding maps that back to code-point
-offsets and drops — never invents — whatever fails to match. Write the entities into a `.jsonl`
-alongside `doc_id` / `text` and open it with `--input` to refine.
+An LLM cannot count characters, so it is never asked for offsets: it quotes the text, with each
+entity's mentions **grouped under the sentence** they occur in (one quotation, every mention inside
+it), and non-continuous mentions written as `"Annie[…]Washington"`. Grounding maps that back to
+code-point offsets and drops — never invents — whatever fails to match. Write the entities into a
+`.jsonl` alongside `doc_id` / `text` and open it with `--input` to refine.
+
+One pass annotates every entity type. The label set and its guidelines live in
+`ner-annotator-llm/ner_annotator_llm/guidelines/` — `general.md` for how to report annotations and
+`entities.json` for the per-type rules (`PER`, `JOB_TITLE`, `LOC`, `ORG`, `TIME` out of the box).
+Adding a key to that JSON adds the type to the enum the model must choose from and to the prompt;
+no code change. Note that these are the *annotator's* types — the app's `--types` is set
+separately, so keep the two in step.
 
 See [`ner-annotator-llm/README.md`](ner-annotator-llm/README.md) for the output format, the
-matching rules, and how to write guidelines for the other entity types.
+matching rules, and how to write guidelines.
 
 ## Keyboard shortcuts
 
@@ -325,7 +332,7 @@ backend/ner_annotator/   models.py · store.py · workspace.py            (per-u
                          mongo.py                                       (optional MongoDB mirror)
                          main.py · __main__.py                          (FastAPI app + CLI)
 ner-annotator-llm/       signatures.py · grounding.py · guidelines.py   (standalone package:
-                                                                         LLM predictions)
+                         guidelines/general.md · entities.json           LLM predictions)
 frontend/src/            lib/segments.ts · lib/offsets.ts               (rendering & selection core)
                          store.ts · api.ts · components/ · hooks/       (UI, incl. login + source select)
 sample/input.jsonl       example docs: metadata, predictions, from-scratch, nested, unicode

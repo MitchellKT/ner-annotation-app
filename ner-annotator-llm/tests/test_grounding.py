@@ -3,23 +3,36 @@ import pytest
 from ner_annotator_llm.grounding import (
     DUPLICATE_MENTION,
     EMPTY_MENTION,
+    INVALID_CANDIDATE,
     MENTION_NOT_FOUND,
     MENTION_OUTSIDE_SENTENCE,
     SENTENCE_NOT_FOUND,
     entities_to_json,
     resolve_entities,
 )
-from ner_annotator_llm.schema import EntityCandidate, MentionCandidate, split_fragments
+from ner_annotator_llm.schema import (
+    EntityCandidate,
+    MentionCandidate,
+    SentenceMentions,
+    split_fragments,
+)
 
 
 def entity(*mentions, name="e", type="PER"):
-    """Build a candidate from (mention, sentence[, flags]) tuples."""
-    out = []
+    """Build a candidate from (mention, sentence[, flags]) tuples.
+
+    Consecutive tuples quoting the same sentence become one sentence group, so
+    the tests read like the model's answer: mention, mention, mention, all under
+    one quotation.
+    """
+    groups = []
     for m in mentions:
         text, sentence = m[0], m[1]
         flags = m[2] if len(m) > 2 else {}
-        out.append(MentionCandidate(mention=text, sentence=sentence, **flags))
-    return EntityCandidate(name=name, type=type, mentions=out)
+        if not groups or groups[-1].sentence != sentence:
+            groups.append(SentenceMentions(sentence=sentence, mentions=[]))
+        groups[-1].mentions.append(MentionCandidate(text=text, **flags))
+    return EntityCandidate(name=name, type=type, sentences=groups)
 
 
 def spans(resolution):
@@ -66,7 +79,7 @@ def test_continuous_mentions_get_character_offsets():
     assert text[33:38] == "Obama"
 
 
-def test_output_matches_on_disk_schema():
+def test_output_matches_the_annotation_schema():
     text = "Annie and George Washington visited Mount Vernon."
     res = resolve_entities(
         text,
@@ -82,6 +95,21 @@ def test_output_matches_on_disk_schema():
     ]
 
 
+def test_entity_type_comes_from_the_registry():
+    text = "The mayor of London opened the bridge."
+    res = resolve_entities(
+        text,
+        [
+            entity(("mayor", text), name="the mayor", type="JOB_TITLE"),
+            entity(("London", text), name="London", type="LOC"),
+        ],
+    )
+    assert [e.type for e in res.entities] == ["JOB_TITLE", "LOC"]
+    assert entities_to_json(res.entities)[0] == {
+        "type": "JOB_TITLE", "mentions": [{"start": 4, "end": 9}]
+    }
+
+
 def test_flags_ride_through():
     text = "I went to the theatre with Maxim's brother."
     res = resolve_entities(
@@ -94,6 +122,79 @@ def test_flags_ride_through():
     assert entities_to_json(res.entities) == [
         {"type": "PER", "mentions": [{"start": 27, "end": 32, "implicit": True}]},
         {"type": "PER", "mentions": [{"start": 27, "end": 42, "relative": True}]},
+    ]
+
+
+# --- many mentions in one sentence ------------------------------------------
+
+
+def test_all_mentions_in_one_sentence_resolve_left_to_right():
+    text = "Obama said that he and his wife had left Chicago, where Obama grew up."
+    res = resolve_entities(
+        text,
+        [EntityCandidate(name="Barack Obama", type="PER", sentences=[
+            SentenceMentions(sentence=text, mentions=[
+                MentionCandidate(text="Obama"),
+                MentionCandidate(text="he"),
+                MentionCandidate(text="his", implicit=True),
+                MentionCandidate(text="Obama"),
+            ]),
+        ])],
+    )
+    assert spans(res) == [[[(0, 5)], [(16, 18)], [(23, 26)], [(56, 61)]]]
+    assert res.problems == []
+    assert [text[s:e] for (s, e), in spans(res)[0]] == ["Obama", "he", "his", "Obama"]
+
+
+def test_sentence_is_quoted_once_per_group_not_per_mention():
+    text = "Alice met Bob. Alice told Alice's sister about Alice."
+    second = "Alice told Alice's sister about Alice."
+    res = resolve_entities(
+        text,
+        [entity(
+            ("Alice", "Alice met Bob."),
+            ("Alice", second),
+            ("Alice", second),
+            ("Alice", second),
+        )],
+    )
+    assert spans(res) == [[[(0, 5)], [(15, 20)], [(26, 31)], [(47, 52)]]]
+
+
+def test_a_verbatim_repeated_sentence_hands_out_its_occurrences_in_order():
+    # Both groups quote the same sentence because the document says it twice;
+    # the second group must land on the second copy, not re-resolve the first.
+    text = "Ann arrived. Ann arrived."
+    res = resolve_entities(
+        text,
+        [entity(("Ann", "Ann arrived."), name="Ann", type="PER")],
+    )
+    assert spans(res) == [[[(0, 3)]]]
+
+    res = resolve_entities(
+        text,
+        [EntityCandidate(name="Ann", type="PER", sentences=[
+            SentenceMentions(sentence="Ann arrived.", mentions=[MentionCandidate(text="Ann")]),
+            SentenceMentions(sentence="Ann arrived.", mentions=[MentionCandidate(text="Ann")]),
+        ])],
+    )
+    assert spans(res) == [[[(0, 3)], [(13, 16)]]]
+    assert res.problems == []
+
+
+def test_one_stray_mention_does_not_move_the_rest_of_the_group():
+    text = "Ann met Bob in Paris. Carol waved at Ann."
+    res = resolve_entities(
+        text,
+        [entity(
+            ("Ann", "Ann met Bob in Paris."),
+            ("Bob", "Ann met Bob in Paris."),
+            ("Carol", "Ann met Bob in Paris."),  # quoted with the wrong sentence
+        )],
+    )
+    assert spans(res) == [[[(0, 3)], [(8, 11)], [(22, 27)]]]
+    assert [(p.mention, p.reason, p.dropped) for p in res.problems] == [
+        ("Carol", MENTION_OUTSIDE_SENTENCE, False)
     ]
 
 
@@ -177,7 +278,7 @@ def test_fuzzy_sentence_still_anchors_the_window():
 
 def test_unfindable_mention_is_dropped_and_reported():
     text = "Alice met Bob in Paris."
-    res = resolve_entities(text, [entity(("Carol", "Alice met Bob in Paris."), ("Bob", text))])
+    res = resolve_entities(text, [entity(("Carol", text), ("Bob", text))])
     assert spans(res) == [[[(10, 13)]]]
     assert [(p.mention, p.reason, p.dropped) for p in res.problems] == [
         ("Carol", MENTION_NOT_FOUND, True)
@@ -225,6 +326,23 @@ def test_fragments_must_appear_in_order():
     assert [p.reason for p in res.problems] == [MENTION_NOT_FOUND]
 
 
+def test_unknown_entity_type_is_reported_not_raised():
+    text = "Alice met Bob."
+    res = resolve_entities(
+        text,
+        [
+            {"name": "the vibe", "type": "GENRE",
+             "sentences": [{"sentence": text, "mentions": [{"text": "Alice"}]}]},
+            {"name": "Alice", "type": "PER",
+             "sentences": [{"sentence": text, "mentions": [{"text": "Alice"}]}]},
+        ],
+    )
+    assert entities_to_json(res.entities) == [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}]
+    problem, = res.problems
+    assert (problem.reason, problem.dropped, problem.name) == (INVALID_CANDIDATE, True, "the vibe")
+    assert "type" in problem.detail
+
+
 def test_resolution_counts():
     text = "Barack Obama was born in Hawaii. Obama later moved to Chicago."
     res = resolve_entities(
@@ -239,8 +357,8 @@ def test_candidates_may_be_plain_dicts():
     text = "Alice met Bob."
     res = resolve_entities(
         text,
-        [{"name": "Alice", "type": "", "mentions": [{"mention": "Alice", "sentence": text}]}],
-        default_type="PER",
+        [{"name": "Alice", "type": "PER",
+          "sentences": [{"sentence": text, "mentions": [{"text": "Alice"}]}]}],
     )
     assert entities_to_json(res.entities) == [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}]
 

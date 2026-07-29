@@ -9,64 +9,56 @@ Usage::
     from ner_annotator_llm import EntityAnnotator
 
     dspy.configure(lm=dspy.LM("anthropic/claude-sonnet-5"))
-    annotator = EntityAnnotator(entity_type="PER")
+    annotator = EntityAnnotator()
     prediction = annotator(document=text)
     prediction.entities   # entities in the annotation schema, ready to store
     prediction.problems   # mentions that could not be grounded
 
-The signature is deliberately type-agnostic: the entity type and its guidelines
-are *inputs*, so the same task can be run for ``LOC`` / ``ORG`` / ``TIME`` (and
-the guidelines can be tuned, or optimised by DSPy, without touching the task).
+One signature covers **every** entity type: the type set, each type's one-line
+description and each type's full rules all come from
+``guidelines/entities.json`` and are rendered into an input field, and the
+predicted ``type`` is an :data:`~.guidelines.EntityType` member — so a new type
+is a JSON edit, not a code change or a second pass over the document.
 """
 
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Iterable, List, Optional
 
 import dspy
 
 from .grounding import Resolution, resolve_entities, unicode_safe
-from .guidelines import guidelines_for
+from .guidelines import GENERAL_GUIDELINES, entity_guidelines_block
 from .schema import EntityCandidate
 
 
 class AnnotateEntities(dspy.Signature):
-    """Annotate every mention of the given entity type in a document.
+    """Find every entity in the document and every mention of each one.
 
-    The output is an entity-clustering annotation: an *entity* is one real-world
-    referent, and its `mentions` are all the places in the text that refer to
-    it. Two mentions of the same referent must end up in the same entity, and
-    two distinct referents must never be merged — even when they share a name.
+    Follow `general_guidelines` for *how* to report annotations — how mentions
+    are clustered into entities, how they are quoted, how they are grouped by
+    sentence, and what the two flags mean. Follow `entity_guidelines` for *what*
+    to annotate: it lists the entity types, one line each, and then the full
+    rules per type. Classify each entity you find as exactly one of those types
+    and annotate nothing outside them.
 
-    Mentions are quoted, never described:
-
-    - `mention` is the exact substring of the document that refers to the
-      entity, copied character for character (same spelling, case, punctuation
-      and diacritics). Never paraphrase, translate or normalise it.
-    - `sentence` is the full sentence containing that mention, also copied
-      verbatim. It is what locates the mention in the document, so when the same
-      surface form occurs several times, give the sentence of the occurrence you
-      mean, and list repeated mentions in the order they appear in the text.
-    - A mention split across the text by intervening words that belong to
-      something else is written as its fragments joined by `[…]` — e.g.
-      `Annie[…]Washington` in "Annie and George Washington visited Mount
-      Vernon". Use it only for one reference cut in two, never to join two
-      separate mentions.
-
-    Mentions may overlap or nest (a shorter mention of one entity inside a
-    longer mention of another is fine). Annotate only what the text actually
-    says; do not add entities that are merely implied by world knowledge, and
-    return an empty list when the document contains none.
+    Be exhaustive rather than cautious: a sentence usually holds several
+    mentions of the same entity — a name, then a pronoun, then a possessive —
+    and every one of them belongs in that entity's entry for the sentence.
     """
 
-    guidelines: str = dspy.InputField(
-        desc="Annotation guidelines for this entity type: what counts as an "
-             "entity, what counts as a mention, and how to flag them."
+    general_guidelines: str = dspy.InputField(
+        desc="How to report annotations. Applies to every entity type."
     )
-    entity_type: str = dspy.InputField(desc="The entity type to annotate, e.g. 'PER'.")
+    entity_guidelines: str = dspy.InputField(
+        desc="The entity types to annotate — key, description and full rules for each."
+    )
     document: str = dspy.InputField(desc="The full document text, verbatim.")
     entities: List[EntityCandidate] = dspy.OutputField(
-        desc="One item per distinct entity of this type, each with all of its mentions."
+        desc=(
+            "One item per distinct entity, of any of the listed types, with its "
+            "mentions grouped by the sentence they occur in."
+        )
     )
 
 
@@ -82,17 +74,29 @@ class EntityAnnotator(dspy.Module):
                     per-mention problems);
     ``problems``    shorthand for ``resolution.problems``;
     ``candidates``  the raw quoted prediction, useful when debugging a drop.
+
+    ``types`` narrows the run to a subset of the registered entity types (their
+    guidelines are the only ones shown, and predictions of other types are
+    dropped); by default every type in ``guidelines/entities.json`` is in scope.
+    ``general_guidelines`` / ``entity_guidelines`` override the rendered text
+    outright, e.g. when tuning wording or plugging in an optimised prompt.
     """
 
     def __init__(
         self,
-        entity_type: str = "PER",
-        guidelines: Optional[str] = None,
+        types: Optional[Iterable[object]] = None,
+        general_guidelines: Optional[str] = None,
+        entity_guidelines: Optional[str] = None,
         predictor: Optional[dspy.Module] = None,
     ) -> None:
         super().__init__()
-        self.entity_type = entity_type
-        self.guidelines = guidelines if guidelines is not None else guidelines_for(entity_type)
+        self.types = None if types is None else [str(getattr(t, "value", t)) for t in types]
+        self.general_guidelines = (
+            GENERAL_GUIDELINES if general_guidelines is None else general_guidelines
+        )
+        self.entity_guidelines = (
+            entity_guidelines_block(self.types) if entity_guidelines is None else entity_guidelines
+        )
         self.predict = predictor or dspy.ChainOfThought(AnnotateEntities)
 
     def forward(self, document: str) -> dspy.Prediction:
@@ -100,14 +104,14 @@ class EntityAnnotator(dspy.Module):
         # normalise once and use the same text for both.
         text = unicode_safe(document)
         prediction = self.predict(
-            guidelines=self.guidelines,
-            entity_type=self.entity_type,
+            general_guidelines=self.general_guidelines,
+            entity_guidelines=self.entity_guidelines,
             document=text,
         )
         candidates = prediction.entities or []
-        resolution: Resolution = resolve_entities(
-            text, candidates, default_type=self.entity_type
-        )
+        resolution: Resolution = resolve_entities(text, candidates)
+        if self.types is not None:
+            resolution.entities = [e for e in resolution.entities if e.type in self.types]
         return dspy.Prediction(
             entities=resolution.to_json(),
             resolution=resolution,

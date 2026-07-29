@@ -1,11 +1,12 @@
 """Turn quoted LLM output into character-level annotations.
 
-The LLM returns mentions as text (see :mod:`.schema`); the annotation format
-wants ``{"start", "end"}`` code-point offsets over the document. This module
-bridges the two:
+The LLM returns mentions as text, grouped by the sentence they occur in (see
+:mod:`.schema`); the annotation format wants ``{"start", "end"}`` code-point
+offsets over the document. This module bridges the two:
 
-1. the mention's **sentence** is located in the document, which gives a window;
-2. the mention's **fragments** are located inside that window, in order, which
+1. the group's **sentence** is located in the document, which gives a window —
+   once for every mention in the group;
+2. each mention's **fragments** are located inside that window, in order, which
    gives one :class:`Fragment` each;
 3. offsets are mapped back to the *original* text.
 
@@ -29,7 +30,9 @@ import unicodedata
 from dataclasses import dataclass, field
 from typing import Any, Iterable, Iterator, List, Optional, Sequence, Tuple
 
-from .schema import EntityCandidate, MentionCandidate, split_fragments
+from pydantic import ValidationError
+
+from .schema import EntityCandidate, MentionCandidate, SentenceMentions, split_fragments
 
 # Characters that carry no textual content but are common in RTL/copy-pasted
 # text; dropping them keeps a model's clean retyping matchable.
@@ -61,6 +64,7 @@ MENTION_OUTSIDE_SENTENCE = "mention-outside-sentence"
 MENTION_NOT_FOUND = "mention-not-found"
 EMPTY_MENTION = "empty-mention"
 DUPLICATE_MENTION = "duplicate-mention"
+INVALID_CANDIDATE = "invalid-candidate"
 
 
 @dataclass(frozen=True)
@@ -149,6 +153,9 @@ class Problem:
     sentence: str
     reason: str
     dropped: bool
+    # Extra context where there is any — currently the validation error that
+    # made a whole candidate unusable.
+    detail: str = ""
 
 
 @dataclass
@@ -279,26 +286,25 @@ def _place_fragments(
     return None
 
 
-def _search_plan(doc: _Normalized, sentence: str) -> List[Tuple[Tuple[int, int], Optional[str]]]:
-    """Where to look for the mention, best window first.
+def _sentence_windows(doc: _Normalized, sentence: str) -> Tuple[List[Tuple[int, int]], bool]:
+    """Where in the document the quoted sentence is.
 
-    Each attempt pairs a window with the ``Problem.reason`` to report if that is
-    the window the mention is found in (``None`` = clean hit). Every exact
-    occurrence of the sentence is a window; failing that a fuzzy neighbourhood
-    is tried. The whole document is always the last resort — a mention that is
-    real but quoted with the wrong sentence is worth keeping, flagged.
+    Returns ``(windows, found)``. Every exact occurrence of the sentence is a
+    window; failing that a fuzzy neighbourhood is tried. When the sentence
+    cannot be placed at all the window is the whole document and ``found`` is
+    False — the mentions are still worth resolving, just flagged.
     """
-    whole = (0, len(doc.text))
+    whole = [(0, len(doc.text))]
     needle = _Normalized(sentence).text.strip()
     if not needle:
-        return [(whole, SENTENCE_NOT_FOUND)]
+        return whole, False
     windows = list(_iter_occurrences(doc.text, needle, 0, len(doc.text)))
-    if not windows:
-        fuzzy = _fuzzy_window(doc.text, needle)
-        windows = [fuzzy] if fuzzy is not None else []
-    if not windows:
-        return [(whole, SENTENCE_NOT_FOUND)]
-    return [(w, None) for w in windows] + [(whole, MENTION_OUTSIDE_SENTENCE)]
+    if windows:
+        return windows, True
+    fuzzy = _fuzzy_window(doc.text, needle)
+    if fuzzy is not None:
+        return [fuzzy], True
+    return whole, False
 
 
 def _fuzzy_window(hay: str, needle: str) -> Optional[Tuple[int, int]]:
@@ -316,87 +322,155 @@ def _fuzzy_window(hay: str, needle: str) -> Optional[Tuple[int, int]]:
     return start, end
 
 
-def _resolve_mention(
-    doc: _Normalized,
-    candidate: MentionCandidate,
-    taken: List[Tuple[int, int]],
-) -> Tuple[Optional[Mention], Optional[str]]:
-    """Ground one mention. Returns ``(mention, problem_reason)``."""
-    parts = split_fragments(candidate.mention)
-    if not parts:
-        return None, EMPTY_MENTION
-    normalized_parts = [_Normalized(p).text.strip() for p in parts]
-    if not all(normalized_parts):
-        return None, EMPTY_MENTION
+def _fragment_parts(mention: MentionCandidate) -> Optional[List[str]]:
+    """The mention's fragments, normalised for matching. ``None`` if empty."""
+    parts = [_Normalized(p).text.strip() for p in split_fragments(mention.text)]
+    return parts if parts and all(parts) else None
 
-    for (lo, hi), reason in _search_plan(doc, candidate.sentence):
-        placed = _place_fragments(doc.text, normalized_parts, lo, hi, taken)
-        if placed is None:
+
+def _build_mention(
+    doc: _Normalized,
+    spans: Sequence[Tuple[int, int]],
+    candidate: MentionCandidate,
+) -> Mention:
+    fragments = [Fragment(*doc.to_source(*span)) for span in spans]
+    return Mention(
+        fragments=fragments,
+        relative=candidate.relative,
+        implicit=candidate.implicit,
+    )
+
+
+def _resolve_group(
+    doc: _Normalized,
+    group: SentenceMentions,
+    taken: List[Tuple[int, int]],
+) -> List[Tuple[MentionCandidate, Optional[Mention], Optional[str]]]:
+    """Ground every mention the model reported inside one quoted sentence.
+
+    The sentence is located once for the whole group. When it occurs more than
+    once in the document, the occurrence that accounts for the most of the
+    group's mentions wins, and ties go to the one whose spans are not already
+    spoken for — so a sentence that repeats verbatim hands out its occurrences
+    in order instead of resolving every group onto the first copy. Within the
+    chosen window the mentions are placed in order, each remembering what the
+    previous ones used, so repeated wording ("Obama … Obama") walks forward
+    rather than piling onto the first occurrence.
+
+    Returns one ``(candidate, mention | None, reason | None)`` per input mention,
+    in the order given.
+    """
+    parts = [_fragment_parts(m) for m in group.mentions]
+    windows, found = _sentence_windows(doc, group.sentence)
+
+    best: List[Optional[List[Tuple[int, int]]]] = []
+    best_score = ()
+    for lo, hi in windows:
+        trial = list(taken)
+        placements: List[Optional[List[Tuple[int, int]]]] = []
+        for p in parts:
+            spans = _place_fragments(doc.text, p, lo, hi, trial) if p else None
+            placements.append(spans)
+            if spans is not None:
+                trial.extend(spans)
+        resolved = [s for s in placements if s is not None]
+        reused = sum(1 for s in resolved if any(_overlaps(span, taken) for span in s))
+        score = (len(resolved), -reused)
+        if not best_score or score > best_score:
+            best, best_score = placements, score
+        if score == (len(parts), 0):
+            break
+
+    results: List[Tuple[MentionCandidate, Optional[Mention], Optional[str]]] = []
+    for candidate, p, spans in zip(group.mentions, parts, best):
+        if p is None:
+            results.append((candidate, None, EMPTY_MENTION))
             continue
-        taken.extend(placed)
-        fragments = [Fragment(start=s, end=e) for s, e in (doc.to_source(*p) for p in placed)]
-        mention = Mention(
-            fragments=fragments,
-            relative=candidate.relative,
-            implicit=candidate.implicit,
-        )
-        return mention, reason
-    return None, MENTION_NOT_FOUND
+        reason: Optional[str] = None if found else SENTENCE_NOT_FOUND
+        if spans is None:
+            # Quoted with the wrong sentence, or not in the text at all. A
+            # document-wide retry keeps the real ones, flagged; note that this
+            # is per mention, so one stray mention cannot drag the rest of the
+            # group out of the sentence it was found in.
+            spans = _place_fragments(doc.text, p, 0, len(doc.text), taken) if found else None
+            reason = MENTION_OUTSIDE_SENTENCE if spans is not None else MENTION_NOT_FOUND
+        if spans is None:
+            results.append((candidate, None, reason))
+            continue
+        taken.extend(spans)
+        results.append((candidate, _build_mention(doc, spans, candidate), reason))
+    return results
 
 
 def _mention_key(mention: Mention) -> Tuple[Tuple[int, int], ...]:
     return tuple((f.start, f.end) for f in mention.fragments)
 
 
-def resolve_entities(
-    text: str,
-    candidates: Iterable[Any],
-    *,
-    default_type: str = "PER",
-) -> Resolution:
+def resolve_entities(text: str, candidates: Iterable[Any]) -> Resolution:
     """Convert predicted (quoted) entities into offset-based entities.
 
     ``text`` is the document exactly as it was shown to the model. Candidates
     are :class:`~.schema.EntityCandidate` instances or anything that parses as
-    one (a plain dict from a raw LM response, say). Mentions are resolved in the
-    order given, and each resolved span is remembered so that repeated surface
-    forms map to successive occurrences.
+    one (a plain dict from a raw LM response, say); one that does not parse —
+    an unknown entity type, a missing field — is reported and skipped rather
+    than raising.
     """
     doc = _Normalized(text)
     resolution = Resolution()
     taken: List[Tuple[int, int]] = []
 
     for index, value in enumerate(candidates):
-        candidate = (
-            value if isinstance(value, EntityCandidate) else EntityCandidate.model_validate(value)
-        )
+        try:
+            candidate = (
+                value
+                if isinstance(value, EntityCandidate)
+                else EntityCandidate.model_validate(value)
+            )
+        except ValidationError as exc:
+            resolution.problems.append(
+                Problem(
+                    entity_index=index,
+                    name=str(value.get("name", "")) if isinstance(value, dict) else "",
+                    mention="",
+                    sentence="",
+                    reason=INVALID_CANDIDATE,
+                    dropped=True,
+                    detail=_first_error(exc),
+                )
+            )
+            continue
+
         mentions: List[Mention] = []
         seen: set = set()
-        for raw in candidate.mentions:
-            mention, reason = _resolve_mention(doc, raw, taken)
-            if mention is not None and _mention_key(mention) in seen:
-                mention, reason = None, DUPLICATE_MENTION
-            if mention is not None:
-                seen.add(_mention_key(mention))
-                mentions.append(mention)
-            if reason is not None:
-                resolution.problems.append(
-                    Problem(
-                        entity_index=index,
-                        name=candidate.name,
-                        mention=raw.mention,
-                        sentence=raw.sentence,
-                        reason=reason,
-                        dropped=mention is None,
+        for group in candidate.sentences:
+            for raw, mention, reason in _resolve_group(doc, group, taken):
+                if mention is not None and _mention_key(mention) in seen:
+                    mention, reason = None, DUPLICATE_MENTION
+                if mention is not None:
+                    seen.add(_mention_key(mention))
+                    mentions.append(mention)
+                if reason is not None:
+                    resolution.problems.append(
+                        Problem(
+                            entity_index=index,
+                            name=candidate.name,
+                            mention=raw.text,
+                            sentence=group.sentence,
+                            reason=reason,
+                            dropped=mention is None,
+                        )
                     )
-                )
         # An entity with nothing left to point at is not annotation, it is noise.
         if mentions:
-            resolution.entities.append(
-                Entity(type=candidate.type or default_type, mentions=mentions)
-            )
+            resolution.entities.append(Entity(type=candidate.type.value, mentions=mentions))
 
     return resolution
+
+
+def _first_error(exc: ValidationError) -> str:
+    error = exc.errors()[0]
+    location = ".".join(str(part) for part in error["loc"])
+    return f"{location}: {error['msg']}" if location else error["msg"]
 
 
 def unicode_safe(text: str) -> str:

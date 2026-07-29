@@ -1,16 +1,29 @@
 """The shape the LLM answers in — mentions quoted as *text*, not offsets.
 
 An LLM cannot reliably count characters, so it is never asked for ``start`` /
-``end``. Instead every mention is returned as two verbatim quotations:
+``end``. It quotes instead, and mentions are **grouped by sentence**::
 
-* ``mention``  — the mention's surface form, exactly as it appears in the text;
-* ``sentence`` — the surrounding sentence, which anchors the mention to one
-  place in the document (``Obama`` may occur five times; the sentence says
-  which occurrence is meant).
+    EntityCandidate(
+        name="Barack Obama",
+        type=EntityType.PER,
+        sentences=[SentenceMentions(
+            sentence="Obama said that he and his wife had left Chicago.",
+            mentions=[MentionCandidate(text="Obama"),
+                      MentionCandidate(text="he"),
+                      MentionCandidate(text="his")],
+        )],
+    )
 
-A **non-continuous** mention is written as its fragments joined by
-``[…]`` — e.g. ``"Annie[…]Washington"`` for the mention *Annie Washington* in
-*"Annie and George Washington visited Mount Vernon."*.
+One quoted sentence carries every mention of that entity inside it, in order of
+appearance. That is the layout a model is most likely to be exhaustive in: the
+expensive quotation is written once, so listing four mentions of an entity in
+one sentence costs four short strings instead of four repetitions of the
+sentence. The sentence still does the disambiguating work — it says *which*
+occurrence of "Obama" is meant when the document has five.
+
+A **non-continuous** mention is written as its fragments joined by ``[…]`` —
+e.g. ``"Annie[…]Washington"`` for the mention *Annie Washington* in *"Annie and
+George Washington visited Mount Vernon."*.
 
 :mod:`.grounding` turns this into the annotation schema
 (:class:`~.grounding.Entity` with character-level fragments).
@@ -22,6 +35,8 @@ import re
 from typing import List
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from .guidelines import EntityType
 
 # What the model is told to put between the fragments of a non-continuous
 # mention. The parser below is deliberately more permissive than this.
@@ -52,18 +67,11 @@ class MentionCandidate(BaseModel):
 
     model_config = ConfigDict(extra="ignore")
 
-    mention: str = Field(
+    text: str = Field(
         description=(
             "The mention exactly as it appears in the text, copied character for "
             "character. For a non-continuous mention, join the fragments with "
             "'[…]', e.g. 'Annie[…]Washington'."
-        )
-    )
-    sentence: str = Field(
-        description=(
-            "The full sentence containing the mention, copied verbatim from the "
-            "text. It is what pins the mention to one position in the document, "
-            "so it must be reproduced exactly and must contain the mention."
         )
     )
     relative: bool = Field(
@@ -83,7 +91,35 @@ class MentionCandidate(BaseModel):
         ),
     )
 
-    @field_validator("mention", "sentence", mode="before")
+    @field_validator("text", mode="before")
+    @classmethod
+    def _clean(cls, value: object) -> object:
+        return "" if value is None else str(value).strip()
+
+
+class SentenceMentions(BaseModel):
+    """Every mention of one entity inside one sentence."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    sentence: str = Field(
+        description=(
+            "The full sentence, copied verbatim from the text. It locates the "
+            "mentions below, so it must be reproduced exactly; when the same "
+            "wording occurs twice in the document, quote the occurrence meant."
+        )
+    )
+    mentions: List[MentionCandidate] = Field(
+        default_factory=list,
+        description=(
+            "Every mention of this entity in that sentence, in the order they "
+            "appear — including repeats of the same wording and mentions nested "
+            "in one another. Do not deduplicate: three references means three "
+            "entries, and they are matched left to right."
+        ),
+    )
+
+    @field_validator("sentence", mode="before")
     @classmethod
     def _clean(cls, value: object) -> object:
         return "" if value is None else str(value).strip()
@@ -99,14 +135,17 @@ class EntityCandidate(BaseModel):
         description=(
             "Short label for the entity, used only to keep the clustering "
             "readable (e.g. 'Barack Obama'). Not part of the stored annotation."
-        )
+        ),
     )
-    type: str = Field(default="PER", description="Entity type, e.g. 'PER'.")
-    mentions: List[MentionCandidate] = Field(
+    type: EntityType = Field(
+        description="Which of the listed entity types this entity belongs to."
+    )
+    sentences: List[SentenceMentions] = Field(
         default_factory=list,
         description=(
-            "Every mention of this entity, in the order they appear in the text. "
-            "Two mentions of the same referent always belong to the same entity; "
-            "two different referents are never merged, even when they share a name."
+            "One entry per sentence that contains mentions of this entity, in "
+            "document order. Two mentions of the same referent always belong to "
+            "the same entity; two different referents are never merged, even "
+            "when they share a name."
         ),
     )

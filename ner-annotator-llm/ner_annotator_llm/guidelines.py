@@ -1,74 +1,117 @@
-"""Per-entity-type annotation guidelines injected into the prompt.
+"""The guidelines the prompt is built from, and the entity types they define.
 
-The signature takes the guidelines as an *input field* rather than baking them
-into its docstring, so the wording can be tuned (or optimised by DSPy) per
-entity type without touching the task definition. ``PER`` is filled in below;
-the other canonical types get a placeholder that is meant to be replaced by the
-same kind of hand-written text.
+Two files under ``guidelines/`` are the single source of truth, and they are
+meant to be edited:
+
+``general.md``     how to report annotations — clustering, quoting, grouping
+                   mentions by sentence, fragments, the two flags. Type-agnostic.
+``entities.json``  one entry per entity type, keyed by the label written to the
+                   annotation, each with a one-line ``description`` and its full
+                   ``guidelines``.
+
+Adding a type to ``entities.json`` is all it takes: it joins :data:`EntityType`,
+the prompt, and the accepted output — no code change. Nothing here imports the
+signature, so the registry can be read (and rendered) without DSPy installed.
 """
 
 from __future__ import annotations
 
-from typing import Dict
+import json
+from dataclasses import dataclass
+from enum import Enum
+from pathlib import Path
+from typing import Dict, Iterable, List, Optional
 
-PERSON_GUIDELINES = """\
-Entity type: PER — an individual human being, real or fictional.
-
-What counts as a PER entity
-- One entity per *person*, not per name: every way the text refers to that same
-  person belongs to the one entity ("Barack Obama", "Obama", "the president",
-  "he").
-- Two people who share a name are two entities. One person named two ways
-  ("Bibi" / "Netanyahu") is one entity.
-- Groups of people are not PER: families, teams, nations, companies and bands
-  ("the Obamas", "the Lakers") are out of scope here; so are deities and
-  animals unless the text treats them as a named individual person.
-- Job titles alone ("the mayor") are mentions only when they refer to a
-  specific individual, not to whoever might hold the office.
-
-What counts as a mention
-- Names ("Taylor Swift"), partial names ("Swift"), nicknames, and titles used
-  referentially ("the president", "the defendant").
-- Pronouns that refer to the person ("he", "her", "they", "himself").
-- Take the maximal contiguous span that refers to the person: include the given
-  name and surname together, but leave out surrounding punctuation, articles
-  that are not part of the reference, and appositive descriptions
-  ("Barack Obama, the former president" is two mentions, not one span).
-- Honorifics and role words that are part of the reference stay in
-  ("President Obama", "Dr. Smith").
-- Do not annotate the same span twice for the same entity.
-
-relative / implicit
-- Mark a mention `relative` when it identifies the person only through a
-  relation to someone else and never names them: "the father of Abraham",
-  "John's secretary", "her husband".
-- Mark a mention `implicit` when it does name the person, but the sentence is
-  not about them — they appear in a background or possessive role: "Maxim" in
-  "I went to the theatre with Maxim's brother".
-- The two are independent: a mention can be neither, either, or both.
-
-Non-continuous mentions
-- When one reference to a person is split across the text by words that belong
-  to someone else, return the fragments joined by "[…]".
-  In "Annie and George Washington visited Mount Vernon", the wife is mentioned
-  as "Annie[…]Washington" (and "George Washington" is a separate entity).
-- Only use this when the pieces really are one reference; two separate
-  mentions of the same person are two entries in `mentions`, not fragments.
-"""
-
-_PLACEHOLDER = """\
-Entity type: {entity_type}.
-
-No type-specific guidelines have been written yet. Annotate every mention of
-each distinct {entity_type} entity in the text, cluster all mentions of the same
-referent into one entity, and follow the general rules in the task description.
-"""
-
-GUIDELINES: Dict[str, str] = {
-    "PER": PERSON_GUIDELINES,
-}
+GUIDELINES_DIR = Path(__file__).parent / "guidelines"
+GENERAL_PATH = GUIDELINES_DIR / "general.md"
+ENTITIES_PATH = GUIDELINES_DIR / "entities.json"
 
 
-def guidelines_for(entity_type: str) -> str:
-    """Guidelines for ``entity_type``, or a generic placeholder if unwritten."""
-    return GUIDELINES.get(entity_type, _PLACEHOLDER.format(entity_type=entity_type))
+@dataclass(frozen=True)
+class EntityGuideline:
+    """One entity type: its label, its one-line gloss, and its full rules."""
+
+    type: str
+    description: str
+    guidelines: str
+
+
+def _as_text(value: object, where: str) -> str:
+    # A long guideline body is painful as one JSON string, so a list of lines is
+    # accepted too and joined back together.
+    if isinstance(value, str):
+        return value.strip()
+    if isinstance(value, list) and all(isinstance(line, str) for line in value):
+        return "\n".join(value).strip()
+    raise ValueError(f"{where} must be a string or a list of strings")
+
+
+def load_entity_guidelines(path: Path = ENTITIES_PATH) -> Dict[str, EntityGuideline]:
+    """Read ``entities.json``. Keys starting with ``$`` are comments."""
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    out: Dict[str, EntityGuideline] = {}
+    for key, entry in raw.items():
+        if key.startswith("$"):
+            continue
+        if not isinstance(entry, dict):
+            raise ValueError(f"{path.name}: entry {key!r} must be an object")
+        description = _as_text(entry.get("description", ""), f"{key}.description")
+        guidelines = _as_text(entry.get("guidelines", ""), f"{key}.guidelines")
+        if not description or not guidelines:
+            raise ValueError(f"{path.name}: entry {key!r} needs a description and guidelines")
+        out[key] = EntityGuideline(type=key, description=description, guidelines=guidelines)
+    if not out:
+        raise ValueError(f"{path.name}: no entity types defined")
+    return out
+
+
+GENERAL_GUIDELINES: str = GENERAL_PATH.read_text(encoding="utf-8").strip()
+ENTITY_GUIDELINES: Dict[str, EntityGuideline] = load_entity_guidelines()
+
+# The label set as an enum, so a predicted type is validated against the file
+# (and offered to the model as a closed list) instead of taken on faith.
+# ``EntityType.PER.value == "PER"``.
+EntityType = Enum(  # type: ignore[misc]
+    "EntityType",
+    {key: key for key in ENTITY_GUIDELINES},
+    type=str,
+    module=__name__,
+)
+EntityType.__doc__ = "Entity types defined in guidelines/entities.json."
+
+
+def guidelines_for(entity_type: object) -> EntityGuideline:
+    """Look a type up by label or :data:`EntityType` member."""
+    key = entity_type.value if isinstance(entity_type, EntityType) else str(entity_type)
+    try:
+        return ENTITY_GUIDELINES[key]
+    except KeyError:
+        known = ", ".join(ENTITY_GUIDELINES)
+        raise KeyError(f"unknown entity type {key!r}; known types: {known}") from None
+
+
+def _selected(types: Optional[Iterable[object]]) -> List[EntityGuideline]:
+    if types is None:
+        return list(ENTITY_GUIDELINES.values())
+    return [guidelines_for(t) for t in types]
+
+
+def entity_types_block(types: Optional[Iterable[object]] = None) -> str:
+    """The one-line index of types: ``PER — An individual human being...``."""
+    return "\n".join(f"{g.type} — {g.description}" for g in _selected(types))
+
+
+def entity_guidelines_block(types: Optional[Iterable[object]] = None) -> str:
+    """The full per-type rules, prefixed by the index, as one prompt block.
+
+    This is what fills the signature's ``entity_guidelines`` input: every type's
+    key and description up front, so an entity can be classified at a glance,
+    then the rules for each.
+    """
+    sections = [
+        "Annotate entities of these types, and no others:",
+        entity_types_block(types),
+    ]
+    for g in _selected(types):
+        sections.append(f"# {g.type} — {g.description}\n\n{g.guidelines}")
+    return "\n\n".join(sections)
