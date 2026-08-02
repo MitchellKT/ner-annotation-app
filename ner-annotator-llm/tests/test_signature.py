@@ -109,3 +109,74 @@ def test_custom_guidelines_win():
     )(document=TEXT)
     assert stub.seen["general_guidelines"] == "be brief"
     assert stub.seen["entity_guidelines"] == "only capitals"
+
+
+# --- few-shot demos ---------------------------------------------------------
+
+
+GOLD = {
+    "doc_id": "gold-1",
+    "text": "Annie and George Washington visited Mount Vernon.",
+    "entities": [
+        {"type": "PER", "mentions": [{"fragments": [{"start": 0, "end": 5},
+                                                    {"start": 17, "end": 27}]}]},
+        {"type": "LOC", "mentions": [{"start": 36, "end": 48}]},
+    ],
+}
+
+
+def test_to_example_builds_a_compact_demo():
+    from ner_annotator_llm import to_example
+
+    example = to_example(GOLD["text"], GOLD["entities"])
+    assert set(example.inputs().keys()) == {"document"}
+    assert example.document == GOLD["text"]
+    assert [c.type.value for c in example.entities] == ["PER", "LOC"]
+    # The guidelines are already in the prompt; a demo must not repeat them.
+    assert "general_guidelines" not in example
+
+
+def test_to_example_can_carry_the_guidelines_and_reasoning():
+    from ner_annotator_llm import to_example
+
+    example = to_example(GOLD["text"], GOLD["entities"],
+                         include_guidelines=True, reasoning="Two entities here.")
+    assert set(example.inputs().keys()) == {
+        "general_guidelines", "entity_guidelines", "document"
+    }
+    assert example.reasoning == "Two entities here."
+
+
+def test_examples_from_jsonl_reads_a_corpus(tmp_path):
+    import json
+
+    from ner_annotator_llm import examples_from_jsonl
+
+    path = tmp_path / "gold.jsonl"
+    path.write_text(
+        json.dumps(GOLD, ensure_ascii=False) + "\n"
+        + json.dumps({"doc_id": "gold-2", "text": "Nothing here."}) + "\n",
+        encoding="utf-8",
+    )
+    examples = examples_from_jsonl(path)
+    assert len(examples) == 1
+    assert examples[0].document == GOLD["text"]
+
+
+def test_demos_reach_the_predictor_and_the_prompt():
+    from ner_annotator_llm import to_example
+
+    demo = to_example(GOLD["text"], GOLD["entities"])
+    annotator = EntityAnnotator(demos=[demo])
+
+    leaf, = annotator.predict.predictors()
+    assert leaf.demos == [demo]
+
+    messages = dspy.ChatAdapter().format(
+        AnnotateEntities,
+        [demo.toDict()],
+        {"general_guidelines": "G", "entity_guidelines": "E", "document": "doc"},
+    )
+    rendered = "\n".join(m["content"] for m in messages)
+    assert GOLD["text"] in rendered
+    assert "Annie[…]Washington" in rendered

@@ -23,7 +23,7 @@ is a JSON edit, not a code change or a second pass over the document.
 
 from __future__ import annotations
 
-from typing import Iterable, List, Optional
+from typing import Any, Iterable, List, Optional
 
 import dspy
 
@@ -80,6 +80,8 @@ class EntityAnnotator(dspy.Module):
     dropped); by default every type in ``guidelines/entities.json`` is in scope.
     ``general_guidelines`` / ``entity_guidelines`` override the rendered text
     outright, e.g. when tuning wording or plugging in an optimised prompt.
+    ``demos`` are few-shot examples — :func:`~.examples.examples_from_jsonl`
+    turns an annotated corpus into them.
     """
 
     def __init__(
@@ -87,6 +89,7 @@ class EntityAnnotator(dspy.Module):
         types: Optional[Iterable[object]] = None,
         general_guidelines: Optional[str] = None,
         entity_guidelines: Optional[str] = None,
+        demos: Optional[Iterable[Any]] = None,
         predictor: Optional[dspy.Module] = None,
     ) -> None:
         super().__init__()
@@ -98,6 +101,18 @@ class EntityAnnotator(dspy.Module):
             entity_guidelines_block(self.types) if entity_guidelines is None else entity_guidelines
         )
         self.predict = predictor or dspy.ChainOfThought(AnnotateEntities)
+        if demos is not None:
+            self.set_demos(demos)
+
+    def set_demos(self, demos: Iterable[Any]) -> None:
+        """Attach few-shot examples, replacing any already set.
+
+        Demos live on the leaf ``Predict``, not on the wrapper, so they are set
+        through ``predictors()`` — a ``ChainOfThought`` keeps its own inside.
+        """
+        demos = list(demos)
+        for predictor in self.predict.predictors():
+            predictor.demos = demos
 
     def forward(self, document: str) -> dspy.Prediction:
         # The offsets are computed against exactly the string the model saw, so

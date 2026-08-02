@@ -138,6 +138,45 @@ def entities_to_json(entities: Iterable[Entity]) -> List[dict]:
     return [e.to_json() for e in entities]
 
 
+def _fragment_from_json(value: Any) -> Fragment:
+    if isinstance(value, (list, tuple)):
+        if len(value) != 2:
+            raise ValueError("fragment pair must be [start, end]")
+        start, end = value
+    else:
+        start, end = value["start"], value["end"]
+    if int(end) <= int(start) or int(start) < 0:
+        raise ValueError(f"invalid fragment ({start}, {end})")
+    return Fragment(start=int(start), end=int(end))
+
+
+def entities_from_json(entities: Iterable[dict]) -> List[Entity]:
+    """Parse entities in the annotation schema — the inverse of :func:`entities_to_json`.
+
+    Tolerant in the same ways the annotator's own loader is: a continuous
+    mention may arrive as ``{"start", "end"}`` or as a ``[start, end]`` pair,
+    and a split one as ``{"fragments": [...]}``.
+    """
+    out: List[Entity] = []
+    for entity in entities:
+        mentions: List[Mention] = []
+        for mention in entity.get("mentions", []):
+            if isinstance(mention, dict) and "fragments" in mention:
+                fragments = [_fragment_from_json(f) for f in mention["fragments"]]
+            else:
+                fragments = [_fragment_from_json(mention)]
+            flags = mention if isinstance(mention, dict) else {}
+            mentions.append(
+                Mention(
+                    fragments=fragments,
+                    relative=bool(flags.get("relative", False)),
+                    implicit=bool(flags.get("implicit", False)),
+                )
+            )
+        out.append(Entity(type=str(entity["type"]), mentions=mentions))
+    return out
+
+
 @dataclass(frozen=True)
 class Problem:
     """One mention the grounding could not take at face value.
@@ -249,17 +288,23 @@ def _candidate_spans(
     lo: int,
     hi: int,
     taken: Sequence[Tuple[int, int]],
+    cursor: int,
 ) -> List[Tuple[int, int]]:
     """Occurrences of ``needle`` in ``hay[lo:hi]``, best candidates first.
 
-    Whole-word matches beat mid-word ones, and spans not already used by an
-    earlier mention beat ones that are — so repeated surface forms ("Alice …
-    then Alice") get handed out left to right instead of piling onto the first
-    occurrence. Both are preferences, not filters: a genuinely nested mention
-    ("Washington" inside "George Washington") still resolves.
+    Ranked by, in order: whole-word matches over mid-word ones; positions at or
+    after ``cursor``, which is where the previous mention of this group started
+    — mentions are reported in document order, so "Alice … then Alice" walks
+    forward instead of piling onto the first occurrence; spans that are not an
+    exact copy of one already used, which keeps two same-named entities in one
+    sentence off the same span; and finally position, so the earliest candidate
+    wins. All are preferences, not filters — a nested mention ("Washington"
+    inside "George Washington", "America" inside "Bank of America") overlaps
+    something already taken and still resolves there.
     """
+    used = set(taken)
     spans = list(_iter_occurrences(hay, needle, lo, hi))
-    spans.sort(key=lambda s: (not _word_aligned(hay, *s), _overlaps(s, taken), s[0]))
+    spans.sort(key=lambda s: (not _word_aligned(hay, *s), s[0] < cursor, s in used, s[0]))
     return spans
 
 
@@ -269,15 +314,18 @@ def _place_fragments(
     lo: int,
     hi: int,
     taken: Sequence[Tuple[int, int]],
+    cursor: int = 0,
 ) -> Optional[List[Tuple[int, int]]]:
     """Locate every fragment inside ``hay[lo:hi]``, left to right.
 
     Backtracks, so an early fragment matching in a spot that leaves no room for
-    the rest does not sink the whole mention.
+    the rest does not sink the whole mention. ``cursor`` orders the candidates
+    for the mention's *first* fragment; the rest simply follow their
+    predecessor.
     """
     if not parts:
         return None
-    for span in _candidate_spans(hay, parts[0], lo, hi, taken):
+    for span in _candidate_spans(hay, parts[0], lo, hi, taken, cursor):
         if len(parts) == 1:
             return [span]
         rest = _place_fragments(hay, parts[1:], span[1], hi, taken)
@@ -367,12 +415,16 @@ def _resolve_group(
     best_score = ()
     for lo, hi in windows:
         trial = list(taken)
+        cursor = lo
         placements: List[Optional[List[Tuple[int, int]]]] = []
         for p in parts:
-            spans = _place_fragments(doc.text, p, lo, hi, trial) if p else None
+            spans = _place_fragments(doc.text, p, lo, hi, trial, cursor) if p else None
             placements.append(spans)
             if spans is not None:
                 trial.extend(spans)
+                # The next mention starts at or after this one — but not at the
+                # same place, or a repeated word would resolve twice over.
+                cursor = spans[0][0] + 1
         resolved = [s for s in placements if s is not None]
         reused = sum(1 for s in resolved if any(_overlaps(span, taken) for span in s))
         score = (len(resolved), -reused)

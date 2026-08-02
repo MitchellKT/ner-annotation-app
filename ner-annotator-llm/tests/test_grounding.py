@@ -219,8 +219,21 @@ def test_nested_mention_of_another_entity_still_resolves():
             entity(("America", text), ("America", text), name="USA", type="LOC"),
         ],
     )
-    # "America" prefers the unused occurrence, then falls back to the nested one.
-    assert spans(res) == [[[(15, 30)]], [[(52, 59)], [(23, 30)]]]
+    # The nested "America" resolves where it is, and the mentions stay in the
+    # order the model listed them — overlapping an ORG span is normal.
+    assert spans(res) == [[[(15, 30)]], [[(23, 30)], [(52, 59)]]]
+
+
+def test_two_entities_sharing_a_name_do_not_land_on_the_same_span():
+    text = "Washington met Washington."
+    res = resolve_entities(
+        text,
+        [
+            entity(("Washington", text), name="George"),
+            entity(("Washington", text), name="Martha"),
+        ],
+    )
+    assert spans(res) == [[[(0, 10)]], [[(15, 25)]]]
 
 
 def test_word_boundaries_are_preferred():

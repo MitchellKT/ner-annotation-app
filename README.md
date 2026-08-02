@@ -200,6 +200,12 @@ Adding a key to that JSON adds the type to the enum the model must choose from a
 no code change. Note that these are the *annotator's* types — the app's `--types` is set
 separately, so keep the two in step.
 
+The conversion also runs backwards: `to_candidates` turns an annotated document (this `.jsonl`
+schema) into the model's format, which both round-trip-tests the grounding and turns a corpus you
+have already annotated into **few-shot demos** —
+`EntityAnnotator(demos=examples_from_jsonl("gold.jsonl")[:3])`. The annotator's own output files
+can be passed in directly.
+
 See [`ner-annotator-llm/README.md`](ner-annotator-llm/README.md) for the output format, the
 matching rules, and how to write guidelines.
 
@@ -331,7 +337,7 @@ cd ner-annotator-llm && uv run pytest  # grounding quoted LLM output to characte
 backend/ner_annotator/   models.py · store.py · workspace.py            (per-user file I/O)
                          mongo.py                                       (optional MongoDB mirror)
                          main.py · __main__.py                          (FastAPI app + CLI)
-ner-annotator-llm/       signatures.py · grounding.py · guidelines.py   (standalone package:
+ner-annotator-llm/       signatures.py · grounding.py · examples.py     (standalone package:
                          guidelines/general.md · entities.json           LLM predictions)
 frontend/src/            lib/segments.ts · lib/offsets.ts               (rendering & selection core)
                          store.ts · api.ts · components/ · hooks/       (UI, incl. login + source select)

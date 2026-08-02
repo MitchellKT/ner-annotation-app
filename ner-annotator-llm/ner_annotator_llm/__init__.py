@@ -17,12 +17,20 @@ from __future__ import annotations
 
 from typing import Any
 
+from .examples import (
+    examples_from_jsonl,
+    examples_from_records,
+    sentence_spans,
+    to_candidates,
+    to_example,
+)
 from .grounding import (
     Entity,
     Fragment,
     Mention,
     Problem,
     Resolution,
+    entities_from_json,
     entities_to_json,
     resolve_entities,
     unicode_safe,
@@ -60,12 +68,18 @@ __all__ = [
     "Problem",
     "Resolution",
     "SentenceMentions",
+    "entities_from_json",
     "entities_to_json",
     "entity_guidelines_block",
     "entity_types_block",
+    "examples_from_jsonl",
+    "examples_from_records",
     "guidelines_for",
     "resolve_entities",
+    "sentence_spans",
     "split_fragments",
+    "to_candidates",
+    "to_example",
     "unicode_safe",
 ]
 

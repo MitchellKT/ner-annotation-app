@@ -143,11 +143,48 @@ characters.
   (`sentence-not-found`, `mention-outside-sentence`, `mention-not-found`, `empty-mention`,
   `duplicate-mention`, `invalid-candidate`) and a `dropped` flag.
 
+## From annotated data: round-trip and few-shot demos
+
+`examples.py` runs the conversion the other way — a document annotated in the character-level
+schema becomes the quoted, sentence-grouped format the model answers in:
+
+```python
+from ner_annotator_llm import to_candidates
+
+to_candidates(text, [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}])
+# [EntityCandidate(name="Annie", type=PER, sentences=[
+#     SentenceMentions(sentence="Annie waved.", mentions=[MentionCandidate(text="Annie")])])]
+```
+
+Mentions are grouped into the sentence they fall in (`sentence_spans` does the segmentation — a
+small heuristic, since it only decides how much context a demo quotes), split mentions are rejoined
+with `[…]`, and the flags carry over. A mention straddling a sentence boundary keeps both halves,
+so the quoted sentence always contains its mentions. An entity whose type is not in the registry
+cannot be expressed and raises, unless `skip_unknown_types=True`.
+
+Feeding the result back through `resolve_entities` must return the original offsets — the
+round-trip tests assert exactly that over fragmented, nested, repeated, emoji and RTL documents.
+So the same conversion serves two purposes: it checks the grounding, and it turns a gold corpus
+into **few-shot demos**, letting the corpus demonstrate the format instead of describing it twice:
+
+```python
+from ner_annotator_llm import EntityAnnotator, examples_from_jsonl
+
+annotator = EntityAnnotator(demos=examples_from_jsonl("gold.jsonl")[:3])
+```
+
+`examples_from_jsonl` takes any `.jsonl` whose records have `text` and `entities` — the annotator's
+own output files work as they are; other keys are ignored and unannotated records are skipped.
+`to_example(text, entities)` builds one demo, and `annotator.set_demos(...)` swaps them later.
+Demos leave the guidelines out by default (they are already in the prompt in full, and repeating
+them per demo would cost more than the demo itself); `include_guidelines=True` and `reasoning=...`
+fill in the rest when you want a complete example.
+
 ## Tests
 
 ```bash
 pip install -e ".[dev]"
-pytest        # grounding, the guidelines registry, and the signature
+pytest        # grounding, the round trip, the guidelines registry, and the signature
 ```
 
 The signature tests skip themselves when DSPy is not installed.
