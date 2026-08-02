@@ -29,22 +29,28 @@ import dspy
 
 from .grounding import Resolution, resolve_entities, unicode_safe
 from .guidelines import GENERAL_GUIDELINES, entity_guidelines_block
-from .schema import EntityCandidate
+from .schema import Annotation, EntityCandidate, SentenceMentions
 
 
 class AnnotateEntities(dspy.Signature):
     """Find every entity in the document and every mention of each one.
 
-    Follow `general_guidelines` for *how* to report annotations — how mentions
-    are clustered into entities, how they are quoted, how they are grouped by
-    sentence, and what the two flags mean. Follow `entity_guidelines` for *what*
-    to annotate: it lists the entity types, one line each, and then the full
-    rules per type. Classify each entity you find as exactly one of those types
-    and annotate nothing outside them.
+    Answer in two parts. First `entities`: one entry per distinct referent in
+    the document, each with a short unique `label`. Then `sentences`: every
+    sentence that contains at least one mention, quoted verbatim once, holding
+    every mention in it tagged with the `label` of the entity it refers to. A
+    sentence is written once for the whole document, however many entities it
+    mentions, and every label a mention uses must be one you declared.
+
+    Follow `general_guidelines` for *how* to report annotations — clustering,
+    quoting, the two flags. Follow `entity_guidelines` for *what* to annotate:
+    it lists the entity types, one line each, then the full rules per type.
+    Classify each entity as exactly one of those types and annotate nothing
+    outside them.
 
     Be exhaustive rather than cautious: a sentence usually holds several
     mentions of the same entity — a name, then a pronoun, then a possessive —
-    and every one of them belongs in that entity's entry for the sentence.
+    and every one of them belongs in that sentence's list.
     """
 
     general_guidelines: str = dspy.InputField(
@@ -56,8 +62,14 @@ class AnnotateEntities(dspy.Signature):
     document: str = dspy.InputField(desc="The full document text, verbatim.")
     entities: List[EntityCandidate] = dspy.OutputField(
         desc=(
-            "One item per distinct entity, of any of the listed types, with its "
-            "mentions grouped by the sentence they occur in."
+            "The distinct entities in the document, of any of the listed types, "
+            "each with a unique label the mentions refer back to."
+        )
+    )
+    sentences: List[SentenceMentions] = dspy.OutputField(
+        desc=(
+            "Each sentence containing mentions, quoted once, with every mention "
+            "in it and the label of the entity it refers to."
         )
     )
 
@@ -73,7 +85,8 @@ class EntityAnnotator(dspy.Module):
     ``resolution``  the :class:`~.grounding.Resolution` (entity objects plus
                     per-mention problems);
     ``problems``    shorthand for ``resolution.problems``;
-    ``candidates``  the raw quoted prediction, useful when debugging a drop.
+    ``annotation``  the raw quoted prediction (roster + sentences), useful when
+                    debugging a drop.
 
     ``types`` narrows the run to a subset of the registered entity types (their
     guidelines are the only ones shown, and predictions of other types are
@@ -123,14 +136,17 @@ class EntityAnnotator(dspy.Module):
             entity_guidelines=self.entity_guidelines,
             document=text,
         )
-        candidates = prediction.entities or []
-        resolution: Resolution = resolve_entities(text, candidates)
+        annotation = Annotation(
+            entities=prediction.entities or [],
+            sentences=prediction.sentences or [],
+        )
+        resolution: Resolution = resolve_entities(text, annotation)
         if self.types is not None:
             resolution.entities = [e for e in resolution.entities if e.type in self.types]
         return dspy.Prediction(
             entities=resolution.to_json(),
             resolution=resolution,
             problems=resolution.problems,
-            candidates=candidates,
+            annotation=annotation,
             text=text,
         )

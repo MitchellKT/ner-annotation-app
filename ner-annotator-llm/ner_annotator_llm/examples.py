@@ -2,11 +2,12 @@
 
 This is the inverse of :mod:`.grounding`: it takes an annotation in the
 character-level schema — the thing an annotator produced, or a gold corpus —
-and rewrites it as the quoted, sentence-grouped output the signature asks for::
+and rewrites it as the labelled, per-sentence output the signature asks for::
 
     {"type": "PER", "mentions": [{"start": 0, "end": 5}]}
-        ->  EntityCandidate(type=PER, sentences=[SentenceMentions(
-                sentence="Annie waved.", mentions=[MentionCandidate(text="Annie")])])
+        ->  Annotation(entities=[EntityCandidate(label="e1", type=PER, name="Annie")],
+                       sentences=[SentenceMentions(sentence="Annie waved.",
+                           mentions=[MentionCandidate(label="e1", text="Annie")])])
 
 Two uses. As a **check**: running the result back through
 :func:`~.grounding.resolve_entities` must reproduce the original offsets, which
@@ -30,7 +31,13 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from .grounding import Entity, Mention, entities_from_json
 from .guidelines import ENTITY_GUIDELINES
-from .schema import FRAGMENT_SEPARATOR, EntityCandidate, MentionCandidate, SentenceMentions
+from .schema import (
+    FRAGMENT_SEPARATOR,
+    Annotation,
+    EntityCandidate,
+    MentionCandidate,
+    SentenceMentions,
+)
 
 Span = Tuple[int, int]
 
@@ -158,17 +165,20 @@ def _entity_name(text: str, entity: Entity) -> str:
     return _mention_text(text, best)
 
 
-def to_candidates(
+def to_annotation(
     text: str,
     entities: Iterable[Union[Entity, dict]],
     *,
     skip_unknown_types: bool = False,
-) -> List[EntityCandidate]:
+    label_prefix: str = "e",
+) -> Annotation:
     """Rewrite a character-level annotation as the model's output format.
 
     ``entities`` are :class:`~.grounding.Entity` objects or their JSON form.
-    Mentions are grouped by the sentence they fall in and ordered by position,
-    which is exactly the shape :class:`~.schema.EntityCandidate` asks for.
+    Each gets a label (``e1``, ``e2``, … in the order given), and every mention
+    of every entity is filed under the sentence it falls in, ordered by
+    position — the roster-plus-sentences shape :class:`~.schema.Annotation`
+    describes.
 
     An entity whose ``type`` is not in ``guidelines/entities.json`` cannot be
     represented — the model is only offered the registered labels — so it raises
@@ -177,9 +187,9 @@ def to_candidates(
     parsed = list(entities)
     if parsed and isinstance(parsed[0], dict):
         parsed = entities_from_json(parsed)  # type: ignore[arg-type]
-    spans = sentence_spans(text)
 
-    candidates: List[EntityCandidate] = []
+    roster: List[EntityCandidate] = []
+    labelled: List[Tuple[str, Entity]] = []
     for entity in parsed:
         if entity.type not in ENTITY_GUIDELINES:
             if skip_unknown_types:
@@ -192,30 +202,39 @@ def to_candidates(
             )
         if not entity.mentions:
             continue
-        candidates.append(
-            EntityCandidate(
-                name=_entity_name(text, entity),
-                type=entity.type,
-                sentences=_group_by_sentence(text, spans, entity),
-            )
+        label = f"{label_prefix}{len(roster) + 1}"
+        roster.append(
+            EntityCandidate(label=label, type=entity.type, name=_entity_name(text, entity))
         )
-    return candidates
+        labelled.append((label, entity))
+
+    return Annotation(
+        entities=roster,
+        sentences=_group_by_sentence(text, sentence_spans(text), labelled),
+    )
 
 
-def _group_by_sentence(text: str, spans: Sequence[Span], entity: Entity) -> List[SentenceMentions]:
+def _group_by_sentence(
+    text: str,
+    spans: Sequence[Span],
+    labelled: Sequence[Tuple[str, Entity]],
+) -> List[SentenceMentions]:
+    """Every mention of every entity, bucketed into the sentence it falls in."""
     grouped: Dict[Span, List[Tuple[int, MentionCandidate]]] = {}
-    for mention in entity.mentions:
-        window = _covering_span(spans, mention)
-        grouped.setdefault(window, []).append(
-            (
-                mention.fragments[0].start,
-                MentionCandidate(
-                    text=_mention_text(text, mention),
-                    relative=mention.relative,
-                    implicit=mention.implicit,
-                ),
+    for label, entity in labelled:
+        for mention in entity.mentions:
+            window = _covering_span(spans, mention)
+            grouped.setdefault(window, []).append(
+                (
+                    mention.fragments[0].start,
+                    MentionCandidate(
+                        label=label,
+                        text=_mention_text(text, mention),
+                        relative=mention.relative,
+                        implicit=mention.implicit,
+                    ),
+                )
             )
-        )
 
     # Windows can overlap when one mention straddles a sentence boundary and
     # another does not; those are one sentence as far as the answer goes.
@@ -260,9 +279,11 @@ def to_example(
 
     from .guidelines import GENERAL_GUIDELINES, entity_guidelines_block
 
+    annotation = to_annotation(text, entities, skip_unknown_types=skip_unknown_types)
     fields: Dict[str, Any] = {
         "document": text,
-        "entities": to_candidates(text, entities, skip_unknown_types=skip_unknown_types),
+        "entities": annotation.entities,
+        "sentences": annotation.sentences,
     }
     inputs = ["document"]
     if include_guidelines:

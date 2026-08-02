@@ -1,8 +1,9 @@
 """LLM-assisted annotation: a DSPy signature plus grounding to character offsets.
 
-The LLM quotes text rather than counting characters: mentions come back as
-surface forms grouped under the sentence they occur in (fragments of a split
-mention joined by ``[…]``), and :mod:`.grounding` turns that into character
+The LLM quotes text rather than counting characters: it returns a roster of
+labelled entities and then the sentences that mention them, each sentence
+quoted once and each mention tagged with its entity's label (fragments of a
+split mention joined by ``[…]``). :mod:`.grounding` turns that into character
 offsets. One signature annotates every entity type in
 ``guidelines/entities.json``.
 
@@ -21,7 +22,7 @@ from .examples import (
     examples_from_jsonl,
     examples_from_records,
     sentence_spans,
-    to_candidates,
+    to_annotation,
     to_example,
 )
 from .grounding import (
@@ -46,6 +47,7 @@ from .guidelines import (
 )
 from .schema import (
     FRAGMENT_SEPARATOR,
+    Annotation,
     EntityCandidate,
     MentionCandidate,
     SentenceMentions,
@@ -54,6 +56,7 @@ from .schema import (
 
 __all__ = [
     "AnnotateEntities",
+    "Annotation",
     "ENTITY_GUIDELINES",
     "Entity",
     "EntityAnnotator",
@@ -78,7 +81,7 @@ __all__ = [
     "resolve_entities",
     "sentence_spans",
     "split_fragments",
-    "to_candidates",
+    "to_annotation",
     "to_example",
     "unicode_safe",
 ]

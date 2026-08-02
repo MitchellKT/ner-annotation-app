@@ -26,13 +26,13 @@ prediction.problems   # mentions that could not be grounded, with the reason
 
 `EntityAnnotator(types=["PER", "LOC"])` narrows a run to a subset of the registered types.
 
-Without DSPy, ground a prediction you obtained any other way — `candidates` may be
-`EntityCandidate` objects or plain dicts in the same shape:
+Without DSPy, ground a prediction you obtained any other way — an `Annotation` or a plain dict of
+the same shape:
 
 ```python
 from ner_annotator_llm import resolve_entities, entities_to_json
 
-resolution = resolve_entities(text, candidates)
+resolution = resolve_entities(text, {"entities": [...], "sentences": [...]})
 entities_to_json(resolution.entities)
 ```
 
@@ -43,7 +43,7 @@ meant to be edited:
 
 | file | what it holds |
 | --- | --- |
-| `general.md` | how to *report* annotations: clustering, quoting, sentence grouping, fragments, flags |
+| `general.md` | how to *report* annotations: the entity list, then the sentences, quoting, fragments, flags |
 | `entities.json` | one entry per entity type — its one-line `description` and its full `guidelines` |
 
 ```json
@@ -83,25 +83,36 @@ entity_guidelines=...)` overrides them outright.
 
 ## What the model returns
 
-Mentions are **grouped by the sentence they occur in**: the sentence is quoted once and carries
-every mention of that entity inside it, in order of appearance.
+Two parts, in this order. First a **roster** of the distinct entities, each with a short unique
+label. Then the **sentences**: every sentence containing a mention, quoted once for the whole
+document, holding every mention in it tagged with the label of the entity it refers to.
 
 ```json
-{"name": "Barack Obama", "type": "PER", "sentences": [
-  {"sentence": "Obama said that he and his wife had left Chicago.",
-   "mentions": [{"text": "Obama"}, {"text": "he"}, {"text": "his", "implicit": true}]}
-]}
+{"entities": [{"label": "e1", "type": "PER", "name": "Barack Obama"},
+              {"label": "e2", "type": "PER", "name": "his wife"},
+              {"label": "e3", "type": "LOC", "name": "Chicago"}],
+ "sentences": [{"sentence": "Obama said that he and his wife had left Chicago.",
+                "mentions": [{"label": "e1", "text": "Obama"},
+                             {"label": "e1", "text": "he"},
+                             {"label": "e1", "text": "his", "implicit": true},
+                             {"label": "e2", "text": "his wife", "relative": true},
+                             {"label": "e3", "text": "Chicago"}]}]}
 ```
 
-That layout is what makes a model exhaustive when one sentence holds many mentions of the same
-entity — a name, then a pronoun, then a possessive. The expensive quotation is written once, so the
-fourth mention costs one short string instead of another copy of the sentence, and the model is
-answering "who else in this sentence refers to this entity?" rather than rediscovering the sentence
-each time. Repeated wording is not deduplicated: three references means three entries, matched left
-to right.
+Quoting each sentence **once for the document** — rather than once per entity that occurs in it —
+is where the answer's cost is. On a paragraph with several entities per sentence this roughly
+halves the output (measured: 3618 → 1772 characters on a 3-sentence, 9-entity, 26-mention
+paragraph), and the model walks the text once instead of re-reading it per entity, which is also
+the easier question to answer exhaustively: "who else in this sentence refers to an entity?"
 
 The sentence still does the disambiguating work — it says *which* occurrence of "Obama" is meant
-when the document has five.
+when the document has five. Repeated wording is not deduplicated: three references means three
+entries, matched left to right.
+
+The price is referential integrity: a mention's `label` has to exist in the roster. Labels are
+resolved leniently — `E1` for `e1`, or the entity's name instead of its label, still land on the
+right entity — but never invented; a label matching nothing is reported and the mention dropped,
+because without a roster entry there is no type to give it.
 
 A **non-continuous** mention is written as its fragments joined by `[…]`: in *"Annie and George
 Washington visited Mount Vernon"*, the wife is `"Annie[…]Washington"`, one mention split by the
@@ -122,26 +133,28 @@ when true. `Entity`, `Mention` and `Fragment` are plain dataclasses; `entities_t
 
 ## How grounding works
 
-`resolve_entities` locates each quoted sentence in the document **once per group**, then places
-every mention of that group inside the window, in order, with backtracking across fragments.
-Matching runs over a normalised copy of the text (whitespace collapsed, case folded, curly quotes
-and dashes flattened, bidi and zero-width marks dropped) with a per-character index map back to the
-original, so a model that reflows a line break or straightens a quote still lands on the right
-characters.
+`resolve_entities` locates each quoted sentence in the document **once**, then places every mention
+of that sentence inside the window, in order, with backtracking across fragments, and files each
+one under the entity its label names. Matching runs over a normalised copy of the text (whitespace
+collapsed, case folded, curly quotes and dashes flattened, bidi and zero-width marks dropped) with
+a per-character index map back to the original, so a model that reflows a line break or straightens
+a quote still lands on the right characters.
 
+- Mentions come back grouped per entity in roster order, each entity's mentions in document order.
 - Repeated surface forms are handed out in reading order, so "Obama … Obama" in one sentence gets
   two spans rather than one span twice.
-- Nested mentions still resolve — "Washington" inside "George Washington" is fine.
-- When a sentence occurs verbatim more than once, the occurrence accounting for most of the
-  group's mentions wins, and ties go to the one not already spoken for.
+- Nested mentions still resolve — "America" inside "Bank of America" is fine, and the two are
+  separate entities in the same sentence entry.
+- When a sentence occurs verbatim more than once, the occurrence accounting for most of its
+  mentions wins, and ties go to the one not already spoken for.
 - A sentence that cannot be found falls back to a fuzzy window, then to the whole document; a
   single mention quoted under the wrong sentence is retried document-wide on its own, so it cannot
-  drag the rest of its group along.
+  drag the rest of its sentence along.
 - **Nothing is invented.** A mention that does not match is dropped, an entity left with no
-  mentions is pruned, a candidate that does not even parse (unknown type, missing field) is
-  reported instead of raising, and every deviation lands in `Resolution.problems` with a reason
-  (`sentence-not-found`, `mention-outside-sentence`, `mention-not-found`, `empty-mention`,
-  `duplicate-mention`, `invalid-candidate`) and a `dropped` flag.
+  mentions is pruned, an answer that does not even parse is reported instead of raising, and every
+  deviation lands in `Resolution.problems` with a reason and a `dropped` flag:
+  `sentence-not-found`, `mention-outside-sentence`, `mention-not-found`, `empty-mention`,
+  `duplicate-mention`, `unknown-label`, `duplicate-label`, `unused-entity`, `invalid-candidate`.
 
 ## From annotated data: round-trip and few-shot demos
 
@@ -149,16 +162,18 @@ characters.
 schema becomes the quoted, sentence-grouped format the model answers in:
 
 ```python
-from ner_annotator_llm import to_candidates
+from ner_annotator_llm import to_annotation
 
-to_candidates(text, [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}])
-# [EntityCandidate(name="Annie", type=PER, sentences=[
-#     SentenceMentions(sentence="Annie waved.", mentions=[MentionCandidate(text="Annie")])])]
+to_annotation(text, [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}])
+# Annotation(entities=[EntityCandidate(label="e1", type=PER, name="Annie")],
+#            sentences=[SentenceMentions(sentence="Annie waved.",
+#                mentions=[MentionCandidate(label="e1", text="Annie")])])
 ```
 
-Mentions are grouped into the sentence they fall in (`sentence_spans` does the segmentation — a
-small heuristic, since it only decides how much context a demo quotes), split mentions are rejoined
-with `[…]`, and the flags carry over. A mention straddling a sentence boundary keeps both halves,
+Entities are labelled `e1`, `e2`, … in order; every mention of every entity is filed into the
+sentence it falls in (`sentence_spans` does the segmentation — a small heuristic, since it only
+decides how much context a demo quotes), split mentions are rejoined with `[…]`, and the flags
+carry over. A mention straddling a sentence boundary keeps both halves,
 so the quoted sentence always contains its mentions. An entity whose type is not in the registry
 cannot be expressed and raises, unless `skip_unknown_types=True`.
 

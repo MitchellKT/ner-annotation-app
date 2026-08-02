@@ -5,7 +5,7 @@ import pytest
 from ner_annotator_llm.examples import (
     examples_from_records,
     sentence_spans,
-    to_candidates,
+    to_annotation,
 )
 from ner_annotator_llm.grounding import entities_to_json, resolve_entities
 
@@ -115,43 +115,52 @@ def test_empty_text_has_no_sentences():
 # --- conversion -------------------------------------------------------------
 
 
-def test_mentions_are_grouped_by_sentence_in_document_order():
+def test_entities_are_declared_once_with_labels():
     doc = DOCS[0]
-    per, loc, org = to_candidates(doc["text"], doc["entities"])
-
-    assert per.type.value == "PER"
-    assert per.name == "Barack Obama"
-    assert [(g.sentence, [m.text for m in g.mentions]) for g in per.sentences] == [
-        ("Barack Obama was born in Hawaii.", ["Barack Obama", "Obama"]),
-        ("Obama later moved to Chicago, where he worked for the City Council.",
-         ["Obama", "he"]),
+    annotation = to_annotation(doc["text"], doc["entities"])
+    assert [(e.label, e.type.value, e.name) for e in annotation.entities] == [
+        ("e1", "PER", "Barack Obama"),
+        ("e2", "LOC", "Chicago"),
+        ("e3", "ORG", "City Council"),
     ]
-    assert [m.text for g in loc.sentences for m in g.mentions] == ["Hawaii", "Chicago"]
-    assert org.name == "City Council"
+
+
+def test_each_sentence_appears_once_carrying_every_entity_in_it():
+    doc = DOCS[0]
+    annotation = to_annotation(doc["text"], doc["entities"])
+    assert [(g.sentence, [(m.label, m.text) for m in g.mentions])
+            for g in annotation.sentences] == [
+        ("Barack Obama was born in Hawaii.",
+         [("e1", "Barack Obama"), ("e1", "Obama"), ("e2", "Hawaii")]),
+        ("Obama later moved to Chicago, where he worked for the City Council.",
+         [("e1", "Obama"), ("e2", "Chicago"), ("e1", "he"), ("e3", "City Council")]),
+    ]
 
 
 def test_split_mentions_use_the_fragment_separator():
     doc = DOCS[1]
-    annie, george, _ = to_candidates(doc["text"], doc["entities"])
-    assert [m.text for g in annie.sentences for m in g.mentions] == ["Annie[…]Washington"]
-    assert annie.name == "Annie[…]Washington"
-    assert [m.text for g in george.sentences for m in g.mentions] == ["George Washington"]
+    annotation = to_annotation(doc["text"], doc["entities"])
+    group, = annotation.sentences
+    assert [(m.label, m.text) for m in group.mentions] == [
+        ("e1", "Annie[…]Washington"), ("e2", "George Washington"), ("e3", "Mount Vernon"),
+    ]
+    assert annotation.entities[0].name == "Annie[…]Washington"
 
 
 def test_flags_are_carried_over():
     doc = DOCS[2]
-    _, loc, _ = to_candidates(doc["text"], doc["entities"])
-    nested, plain = [m for g in loc.sentences for m in g.mentions]
-    assert (nested.text, nested.implicit, nested.relative) == ("America", True, False)
-    assert (plain.text, plain.implicit) == ("America", False)
+    annotation = to_annotation(doc["text"], doc["entities"])
+    group, = annotation.sentences
+    nested, plain = [m for m in group.mentions if m.text == "America"]
+    assert (nested.implicit, nested.relative) == (True, False)
+    assert plain.implicit is False
 
 
 def test_a_mention_crossing_a_sentence_boundary_keeps_both_halves():
     text = "Ann arrived. Washington waited."
     entities = [{"type": "PER", "mentions": [{"fragments": [{"start": 0, "end": 3},
                                                             {"start": 13, "end": 23}]}]}]
-    candidate, = to_candidates(text, entities)
-    group, = candidate.sentences
+    group, = to_annotation(text, entities).sentences
     assert group.sentence == text
     assert [m.text for m in group.mentions] == ["Ann[…]Washington"]
 
@@ -160,8 +169,8 @@ def test_entities_may_be_given_as_objects_or_json():
     from ner_annotator_llm.grounding import entities_from_json
 
     doc = DOCS[3]
-    from_json = to_candidates(doc["text"], doc["entities"])
-    from_objects = to_candidates(doc["text"], entities_from_json(doc["entities"]))
+    from_json = to_annotation(doc["text"], doc["entities"])
+    from_objects = to_annotation(doc["text"], entities_from_json(doc["entities"]))
     assert from_json == from_objects
 
 
@@ -170,13 +179,15 @@ def test_unknown_entity_type_raises_or_is_skipped():
     entities = [{"type": "MISC", "mentions": [{"start": 0, "end": 5}]},
                 {"type": "PER", "mentions": [{"start": 10, "end": 13}]}]
     with pytest.raises(ValueError, match="not in the guidelines registry"):
-        to_candidates(text, entities)
-    kept = to_candidates(text, entities, skip_unknown_types=True)
-    assert [c.type.value for c in kept] == ["PER"]
+        to_annotation(text, entities)
+    kept = to_annotation(text, entities, skip_unknown_types=True)
+    assert [c.type.value for c in kept.entities] == ["PER"]
+    assert [m.text for g in kept.sentences for m in g.mentions] == ["Bob"]
 
 
 def test_entities_without_mentions_are_dropped():
-    assert to_candidates("Alice met Bob.", [{"type": "PER", "mentions": []}]) == []
+    empty = to_annotation("Alice met Bob.", [{"type": "PER", "mentions": []}])
+    assert (empty.entities, empty.sentences) == ([], [])
 
 
 # --- the round trip ---------------------------------------------------------
@@ -184,8 +195,8 @@ def test_entities_without_mentions_are_dropped():
 
 @pytest.mark.parametrize("doc", DOCS, ids=lambda d: d["text"][:24])
 def test_round_trip_reproduces_the_original_offsets(doc):
-    candidates = to_candidates(doc["text"], doc["entities"])
-    resolution = resolve_entities(doc["text"], candidates)
+    annotation = to_annotation(doc["text"], doc["entities"])
+    resolution = resolve_entities(doc["text"], annotation)
     assert entities_to_json(resolution.entities) == doc["entities"]
     assert resolution.problems == []
 
@@ -193,8 +204,8 @@ def test_round_trip_reproduces_the_original_offsets(doc):
 def test_round_trip_survives_a_json_encode_decode():
     # What a demo actually goes through when the adapter serialises it.
     doc = DOCS[0]
-    candidates = to_candidates(doc["text"], doc["entities"])
-    payload = json.loads(json.dumps([c.model_dump(mode="json") for c in candidates]))
+    annotation = to_annotation(doc["text"], doc["entities"])
+    payload = json.loads(annotation.model_dump_json())
     resolution = resolve_entities(doc["text"], payload)
     assert entities_to_json(resolution.entities) == doc["entities"]
 

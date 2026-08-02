@@ -1,14 +1,16 @@
 """Turn quoted LLM output into character-level annotations.
 
-The LLM returns mentions as text, grouped by the sentence they occur in (see
-:mod:`.schema`); the annotation format wants ``{"start", "end"}`` code-point
-offsets over the document. This module bridges the two:
+The LLM returns a roster of labelled entities plus the sentences that mention
+them (see :mod:`.schema`); the annotation format wants ``{"start", "end"}``
+code-point offsets over the document, grouped per entity. This module bridges
+the two:
 
-1. the group's **sentence** is located in the document, which gives a window —
-   once for every mention in the group;
+1. each quoted **sentence** is located in the document, which gives a window —
+   once for every mention inside it;
 2. each mention's **fragments** are located inside that window, in order, which
    gives one :class:`Fragment` each;
-3. offsets are mapped back to the *original* text.
+3. offsets are mapped back to the *original* text, and the mention is filed
+   under the entity its **label** names.
 
 Matching is done on a normalised copy of the text (whitespace collapsed, case
 folded, curly quotes/dashes flattened, bidi and zero-width marks dropped) with a
@@ -32,7 +34,7 @@ from typing import Any, Iterable, Iterator, List, Optional, Sequence, Tuple
 
 from pydantic import ValidationError
 
-from .schema import EntityCandidate, MentionCandidate, SentenceMentions, split_fragments
+from .schema import Annotation, MentionCandidate, SentenceMentions, split_fragments
 
 # Characters that carry no textual content but are common in RTL/copy-pasted
 # text; dropping them keeps a model's clean retyping matchable.
@@ -65,6 +67,13 @@ MENTION_NOT_FOUND = "mention-not-found"
 EMPTY_MENTION = "empty-mention"
 DUPLICATE_MENTION = "duplicate-mention"
 INVALID_CANDIDATE = "invalid-candidate"
+UNKNOWN_LABEL = "unknown-label"
+DUPLICATE_LABEL = "duplicate-label"
+UNUSED_ENTITY = "unused-entity"
+
+# How close a mention's label has to be to a declared one to count as the same
+# (difflib ratio), when it matches neither exactly nor by the entity's name.
+_LABEL_SIMILARITY = 0.8
 
 
 @dataclass(frozen=True)
@@ -179,21 +188,22 @@ def entities_from_json(entities: Iterable[dict]) -> List[Entity]:
 
 @dataclass(frozen=True)
 class Problem:
-    """One mention the grounding could not take at face value.
+    """Something the grounding could not take at face value.
 
     ``dropped`` distinguishes a lost mention from a recovered one: a mention
     whose sentence was not found is still resolved by searching the whole
-    document, but the ambiguity is worth surfacing.
+    document, but the ambiguity is worth surfacing. The remaining fields are
+    whatever context that particular problem has — the entity label and name it
+    referenced, the quoted mention and sentence, and ``detail`` for anything
+    else (a validation error, the label a near-miss was matched to).
     """
 
-    entity_index: int
-    name: str
-    mention: str
-    sentence: str
     reason: str
     dropped: bool
-    # Extra context where there is any — currently the validation error that
-    # made a whole candidate unusable.
+    label: str = ""
+    name: str = ""
+    mention: str = ""
+    sentence: str = ""
     detail: str = ""
 
 
@@ -458,63 +468,133 @@ def _mention_key(mention: Mention) -> Tuple[Tuple[int, int], ...]:
     return tuple((f.start, f.end) for f in mention.fragments)
 
 
-def resolve_entities(text: str, candidates: Iterable[Any]) -> Resolution:
-    """Convert predicted (quoted) entities into offset-based entities.
+class _Roster:
+    """The declared entities, and the lookup from a mention's label to one.
 
-    ``text`` is the document exactly as it was shown to the model. Candidates
-    are :class:`~.schema.EntityCandidate` instances or anything that parses as
-    one (a plain dict from a raw LM response, say); one that does not parse —
-    an unknown entity type, a missing field — is reported and skipped rather
-    than raising.
+    Labels are resolved leniently — a model that writes ``E1`` for ``e1``, or
+    names the entity instead of labelling it, still lands on the right bucket —
+    but never invented: a label that matches nothing is reported, because
+    without a roster entry there is no type to give the entity.
     """
-    doc = _Normalized(text)
-    resolution = Resolution()
-    taken: List[Tuple[int, int]] = []
 
-    for index, value in enumerate(candidates):
-        try:
-            candidate = (
-                value
-                if isinstance(value, EntityCandidate)
-                else EntityCandidate.model_validate(value)
+    def __init__(self, resolution: "Resolution") -> None:
+        self.order: List[str] = []
+        self.type: dict = {}
+        self.name: dict = {}
+        self.mentions: dict = {}
+        self.seen: dict = {}
+        self._by_key: dict = {}
+        self._resolution = resolution
+
+    def declare(self, candidate: Any) -> None:
+        label = candidate.label
+        if label in self.type:
+            self._resolution.problems.append(
+                Problem(
+                    reason=DUPLICATE_LABEL,
+                    dropped=True,
+                    label=label,
+                    name=candidate.name,
+                    detail=f"already used by {self.name.get(label, '')!r}",
+                )
             )
-        except ValidationError as exc:
+            return
+        self.order.append(label)
+        self.type[label] = candidate.type.value
+        self.name[label] = candidate.name
+        self.mentions[label] = []
+        self.seen[label] = set()
+        for key in (label, candidate.name):
+            key = _label_key(key)
+            if key and key not in self._by_key:
+                self._by_key[key] = label
+
+    def resolve(self, label: str) -> Optional[str]:
+        """The declared label a mention's ``label`` refers to, if any."""
+        if label in self.type:
+            return label
+        key = _label_key(label)
+        if key in self._by_key:
+            return self._by_key[key]
+        close = difflib.get_close_matches(key, self._by_key, n=1, cutoff=_LABEL_SIMILARITY)
+        return self._by_key[close[0]] if close else None
+
+
+def _label_key(label: str) -> str:
+    return "".join(ch for ch in label.lower() if ch.isalnum())
+
+
+def resolve_entities(text: str, annotation: Any) -> Resolution:
+    """Convert a quoted, labelled prediction into offset-based entities.
+
+    ``text`` is the document exactly as it was shown to the model.
+    ``annotation`` is an :class:`~.schema.Annotation` or anything that parses as
+    one — ``{"entities": [...], "sentences": [...]}`` straight from an LM
+    response, say. One that does not parse is reported rather than raising.
+
+    Entities come back in roster order, each carrying the mentions filed under
+    its label, in document order. Declared entities that no mention referenced
+    are dropped, and so are mentions whose label matches nothing.
+    """
+    resolution = Resolution()
+    try:
+        parsed = (
+            annotation
+            if isinstance(annotation, Annotation)
+            else Annotation.model_validate(annotation)
+        )
+    except ValidationError as exc:
+        resolution.problems.append(
+            Problem(reason=INVALID_CANDIDATE, dropped=True, detail=_first_error(exc))
+        )
+        return resolution
+
+    doc = _Normalized(text)
+    roster = _Roster(resolution)
+    for candidate in parsed.entities:
+        roster.declare(candidate)
+
+    taken: List[Tuple[int, int]] = []
+    for group in parsed.sentences:
+        for raw, mention, reason in _resolve_group(doc, group, taken):
+            label = roster.resolve(raw.label) if mention is not None else None
+            if mention is not None and label is None:
+                mention, reason = None, UNKNOWN_LABEL
+            elif mention is not None and _mention_key(mention) in roster.seen[label]:
+                mention, reason = None, DUPLICATE_MENTION
+            if mention is not None:
+                roster.seen[label].add(_mention_key(mention))
+                roster.mentions[label].append(mention)
+            if reason is not None:
+                resolution.problems.append(
+                    Problem(
+                        reason=reason,
+                        dropped=mention is None,
+                        label=raw.label,
+                        name=roster.name.get(label or raw.label, ""),
+                        mention=raw.text,
+                        sentence=group.sentence,
+                        detail=(
+                            f"matched to {label!r}"
+                            if label is not None and label != raw.label
+                            else ""
+                        ),
+                    )
+                )
+
+    for label in roster.order:
+        mentions = roster.mentions[label]
+        # An entity with nothing to point at is not annotation, it is noise —
+        # but a declared-and-never-mentioned entity is worth saying out loud.
+        if not mentions:
             resolution.problems.append(
                 Problem(
-                    entity_index=index,
-                    name=str(value.get("name", "")) if isinstance(value, dict) else "",
-                    mention="",
-                    sentence="",
-                    reason=INVALID_CANDIDATE,
-                    dropped=True,
-                    detail=_first_error(exc),
+                    reason=UNUSED_ENTITY, dropped=True, label=label, name=roster.name[label]
                 )
             )
             continue
-
-        mentions: List[Mention] = []
-        seen: set = set()
-        for group in candidate.sentences:
-            for raw, mention, reason in _resolve_group(doc, group, taken):
-                if mention is not None and _mention_key(mention) in seen:
-                    mention, reason = None, DUPLICATE_MENTION
-                if mention is not None:
-                    seen.add(_mention_key(mention))
-                    mentions.append(mention)
-                if reason is not None:
-                    resolution.problems.append(
-                        Problem(
-                            entity_index=index,
-                            name=candidate.name,
-                            mention=raw.text,
-                            sentence=group.sentence,
-                            reason=reason,
-                            dropped=mention is None,
-                        )
-                    )
-        # An entity with nothing left to point at is not annotation, it is noise.
-        if mentions:
-            resolution.entities.append(Entity(type=candidate.type.value, mentions=mentions))
+        mentions.sort(key=lambda m: (m.fragments[0].start, m.fragments[-1].end))
+        resolution.entities.append(Entity(type=roster.type[label], mentions=mentions))
 
     return resolution
 

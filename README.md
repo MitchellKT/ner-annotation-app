@@ -187,9 +187,11 @@ prediction.entities   # [{"type": "PER", "mentions": [{"start": 0, "end": 12}]},
 prediction.problems   # mentions that could not be grounded, with the reason
 ```
 
-An LLM cannot count characters, so it is never asked for offsets: it quotes the text, with each
-entity's mentions **grouped under the sentence** they occur in (one quotation, every mention inside
-it), and non-continuous mentions written as `"Annie[…]Washington"`. Grounding maps that back to
+An LLM cannot count characters, so it is never asked for offsets. It answers in two parts: a
+**roster** of the distinct entities, each with a short unique label, then the **sentences** —
+each quoted once for the whole document, carrying every mention in it tagged with its entity's label,
+with non-continuous mentions written as `"Annie[…]Washington"`. Quoting a sentence once instead of
+once per entity roughly halves the answer on entity-dense text. Grounding maps it back to
 code-point offsets and drops — never invents — whatever fails to match. Write the entities into a
 `.jsonl` alongside `doc_id` / `text` and open it with `--input` to refine.
 
@@ -200,7 +202,7 @@ Adding a key to that JSON adds the type to the enum the model must choose from a
 no code change. Note that these are the *annotator's* types — the app's `--types` is set
 separately, so keep the two in step.
 
-The conversion also runs backwards: `to_candidates` turns an annotated document (this `.jsonl`
+The conversion also runs backwards: `to_annotation` turns an annotated document (this `.jsonl`
 schema) into the model's format, which both round-trip-tests the grounding and turns a corpus you
 have already annotated into **few-shot demos** —
 `EntityAnnotator(demos=examples_from_jsonl("gold.jsonl")[:3])`. The annotator's own output files

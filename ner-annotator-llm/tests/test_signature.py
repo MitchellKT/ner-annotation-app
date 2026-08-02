@@ -20,14 +20,15 @@ FIRST = "Annie and George Washington visited Mount Vernon."
 class StubPredictor(dspy.Module):
     """Stands in for the LM: records the inputs, returns a canned prediction."""
 
-    def __init__(self, entities):
+    def __init__(self, entities=(), sentences=()):
         super().__init__()
-        self.entities = entities
+        self.entities = list(entities)
+        self.sentences = list(sentences)
         self.seen = None
 
     def __call__(self, **kwargs):
         self.seen = kwargs
-        return dspy.Prediction(entities=self.entities)
+        return dspy.Prediction(entities=self.entities, sentences=self.sentences)
 
 
 def test_signature_fields():
@@ -36,34 +37,41 @@ def test_signature_fields():
         "entity_guidelines",
         "document",
     ]
-    assert list(AnnotateEntities.output_fields) == ["entities"]
-    annotation = AnnotateEntities.output_fields["entities"].annotation
-    assert typing.get_origin(annotation) is list
-    assert typing.get_args(annotation) == (EntityCandidate,)
+    # The roster is settled before the sentences that refer back to it.
+    assert list(AnnotateEntities.output_fields) == ["entities", "sentences"]
+    roster = AnnotateEntities.output_fields["entities"].annotation
+    grouped = AnnotateEntities.output_fields["sentences"].annotation
+    assert typing.get_args(roster) == (EntityCandidate,)
+    assert typing.get_args(grouped) == (SentenceMentions,)
 
 
 def test_the_prompt_carries_every_type_key_and_description():
-    stub = StubPredictor([])
+    stub = StubPredictor()
     EntityAnnotator(predictor=stub)(document=TEXT)
 
     block = stub.seen["entity_guidelines"]
     for member in EntityType:
         assert f"# {member.value} —" in block
-    assert "## Group mentions by sentence" in stub.seen["general_guidelines"]
+    assert "## Part 1 — the entity list" in stub.seen["general_guidelines"]
     assert stub.seen["document"] == TEXT
 
 
-def test_one_pass_annotates_several_types():
-    stub = StubPredictor([
-        EntityCandidate(name="Annie Washington", type="PER", sentences=[
+def test_one_pass_annotates_several_types_from_one_roster():
+    stub = StubPredictor(
+        entities=[
+            EntityCandidate(label="e1", type="PER", name="Annie Washington"),
+            EntityCandidate(label="e2", type="LOC", name="Mount Vernon"),
+        ],
+        sentences=[
             SentenceMentions(sentence=FIRST, mentions=[
-                MentionCandidate(text="Annie[…]Washington")]),
-            SentenceMentions(sentence="Annie waved.", mentions=[MentionCandidate(text="Annie")]),
-        ]),
-        EntityCandidate(name="Mount Vernon", type="LOC", sentences=[
-            SentenceMentions(sentence=FIRST, mentions=[MentionCandidate(text="Mount Vernon")]),
-        ]),
-    ])
+                MentionCandidate(label="e1", text="Annie[…]Washington"),
+                MentionCandidate(label="e2", text="Mount Vernon"),
+            ]),
+            SentenceMentions(sentence="Annie waved.", mentions=[
+                MentionCandidate(label="e1", text="Annie"),
+            ]),
+        ],
+    )
     prediction = EntityAnnotator(predictor=stub)(document=TEXT)
 
     assert prediction.entities == [
@@ -74,24 +82,32 @@ def test_one_pass_annotates_several_types():
         {"type": "LOC", "mentions": [{"start": 36, "end": 48}]},
     ]
     assert prediction.problems == []
+    assert prediction.annotation.entities == stub.entities
 
 
 def test_annotator_accepts_raw_dicts():
-    stub = StubPredictor([
-        {"name": "George Washington", "type": "PER", "sentences": [
-            {"sentence": FIRST, "mentions": [{"text": "George Washington"}]}]},
-    ])
+    stub = StubPredictor(
+        entities=[{"label": "e1", "type": "PER", "name": "George Washington"}],
+        sentences=[{"sentence": FIRST,
+                    "mentions": [{"label": "e1", "text": "George Washington"}]}],
+    )
     prediction = EntityAnnotator(predictor=stub)(document=TEXT)
     assert prediction.entities == [{"type": "PER", "mentions": [{"start": 10, "end": 27}]}]
 
 
 def test_types_narrows_the_prompt_and_the_output():
-    stub = StubPredictor([
-        EntityCandidate(name="Mount Vernon", type="LOC", sentences=[
-            SentenceMentions(sentence=FIRST, mentions=[MentionCandidate(text="Mount Vernon")])]),
-        EntityCandidate(name="Annie", type="PER", sentences=[
-            SentenceMentions(sentence="Annie waved.", mentions=[MentionCandidate(text="Annie")])]),
-    ])
+    stub = StubPredictor(
+        entities=[
+            EntityCandidate(label="e1", type="LOC", name="Mount Vernon"),
+            EntityCandidate(label="e2", type="PER", name="Annie"),
+        ],
+        sentences=[
+            SentenceMentions(sentence=FIRST, mentions=[
+                MentionCandidate(label="e1", text="Mount Vernon")]),
+            SentenceMentions(sentence="Annie waved.", mentions=[
+                MentionCandidate(label="e2", text="Annie")]),
+        ],
+    )
     prediction = EntityAnnotator(types=["PER"], predictor=stub)(document=TEXT)
 
     assert "# PER —" in stub.seen["entity_guidelines"]
@@ -101,7 +117,7 @@ def test_types_narrows_the_prompt_and_the_output():
 
 
 def test_custom_guidelines_win():
-    stub = StubPredictor([])
+    stub = StubPredictor()
     EntityAnnotator(
         general_guidelines="be brief",
         entity_guidelines="only capitals",
@@ -131,7 +147,8 @@ def test_to_example_builds_a_compact_demo():
     example = to_example(GOLD["text"], GOLD["entities"])
     assert set(example.inputs().keys()) == {"document"}
     assert example.document == GOLD["text"]
-    assert [c.type.value for c in example.entities] == ["PER", "LOC"]
+    assert [(e.label, e.type.value) for e in example.entities] == [("e1", "PER"), ("e2", "LOC")]
+    assert [m.label for g in example.sentences for m in g.mentions] == ["e1", "e2"]
     # The guidelines are already in the prompt; a demo must not repeat them.
     assert "general_guidelines" not in example
 
@@ -180,3 +197,5 @@ def test_demos_reach_the_predictor_and_the_prompt():
     rendered = "\n".join(m["content"] for m in messages)
     assert GOLD["text"] in rendered
     assert "Annie[…]Washington" in rendered
+    # The sentence is quoted once in the demo, not once per entity.
+    assert rendered.count(GOLD["text"]) == 2  # once as the document, once as the sentence

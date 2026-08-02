@@ -1,32 +1,39 @@
-"""The shape the LLM answers in — mentions quoted as *text*, not offsets.
+"""The shape the LLM answers in — quoted text and entity labels, not offsets.
 
 An LLM cannot reliably count characters, so it is never asked for ``start`` /
-``end``. It quotes instead, and mentions are **grouped by sentence**::
+``end``. It answers in two parts instead: a **roster** of the distinct entities
+in the document, each with a short unique label, and then the **sentences**,
+each quoted once and carrying every mention in it, tagged with the label of the
+entity it refers to::
 
-    EntityCandidate(
-        name="Barack Obama",
-        type=EntityType.PER,
+    Annotation(
+        entities=[EntityCandidate(label="e1", type=PER, name="Barack Obama"),
+                  EntityCandidate(label="e2", type=PER, name="Michelle Obama"),
+                  EntityCandidate(label="e3", type=LOC, name="Chicago")],
         sentences=[SentenceMentions(
             sentence="Obama said that he and his wife had left Chicago.",
-            mentions=[MentionCandidate(text="Obama"),
-                      MentionCandidate(text="he"),
-                      MentionCandidate(text="his")],
-        )],
+            mentions=[MentionCandidate(label="e1", text="Obama"),
+                      MentionCandidate(label="e1", text="he"),
+                      MentionCandidate(label="e1", text="his", implicit=True),
+                      MentionCandidate(label="e2", text="his wife", relative=True),
+                      MentionCandidate(label="e3", text="Chicago")]),
+        ],
     )
 
-One quoted sentence carries every mention of that entity inside it, in order of
-appearance. That is the layout a model is most likely to be exhaustive in: the
-expensive quotation is written once, so listing four mentions of an entity in
-one sentence costs four short strings instead of four repetitions of the
-sentence. The sentence still does the disambiguating work — it says *which*
+Every sentence is quoted **once for the whole document** rather than once per
+entity that occurs in it, which is where the answer's cost is: on a paragraph
+with several entities per sentence this is around half the output of quoting
+per entity, and the model walks the text once instead of re-reading it per
+entity. The sentence still does the disambiguating work — it says *which*
 occurrence of "Obama" is meant when the document has five.
+
+The price is referential integrity: a mention's ``label`` has to exist in the
+roster. :mod:`.grounding` resolves labels leniently and reports what it cannot
+match rather than guessing.
 
 A **non-continuous** mention is written as its fragments joined by ``[…]`` —
 e.g. ``"Annie[…]Washington"`` for the mention *Annie Washington* in *"Annie and
 George Washington visited Mount Vernon."*.
-
-:mod:`.grounding` turns this into the annotation schema
-(:class:`~.grounding.Entity` with character-level fragments).
 """
 
 from __future__ import annotations
@@ -62,11 +69,45 @@ def split_fragments(mention: str) -> List[str]:
     return [p.strip() for p in parts if p.strip()]
 
 
-class MentionCandidate(BaseModel):
-    """One predicted mention, quoted rather than offset."""
+def _stripped(value: object) -> str:
+    return "" if value is None else str(value).strip()
+
+
+class EntityCandidate(BaseModel):
+    """One entry in the roster: a distinct referent, its label and its type."""
 
     model_config = ConfigDict(extra="ignore")
 
+    label: str = Field(
+        description=(
+            "Short unique identifier for this entity, e.g. 'e1', 'e2'. Every "
+            "mention of it carries this exact string, so keep it short and do "
+            "not reuse one label for two entities."
+        )
+    )
+    type: EntityType = Field(description="Which of the listed entity types this entity is.")
+    name: str = Field(
+        default="",
+        description=(
+            "Readable label for the referent, e.g. 'Barack Obama' — how a person "
+            "would name it. Not part of the stored annotation."
+        ),
+    )
+
+    @field_validator("label", "name", mode="before")
+    @classmethod
+    def _clean(cls, value: object) -> object:
+        return _stripped(value)
+
+
+class MentionCandidate(BaseModel):
+    """One mention: the text as it appears, and which entity it refers to."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    label: str = Field(
+        description="The label of the entity this mention refers to, from the entity list."
+    )
     text: str = Field(
         description=(
             "The mention exactly as it appears in the text, copied character for "
@@ -91,14 +132,14 @@ class MentionCandidate(BaseModel):
         ),
     )
 
-    @field_validator("text", mode="before")
+    @field_validator("label", "text", mode="before")
     @classmethod
     def _clean(cls, value: object) -> object:
-        return "" if value is None else str(value).strip()
+        return _stripped(value)
 
 
 class SentenceMentions(BaseModel):
-    """Every mention of one entity inside one sentence."""
+    """One sentence and every mention of any entity inside it."""
 
     model_config = ConfigDict(extra="ignore")
 
@@ -112,7 +153,7 @@ class SentenceMentions(BaseModel):
     mentions: List[MentionCandidate] = Field(
         default_factory=list,
         description=(
-            "Every mention of this entity in that sentence, in the order they "
+            "Every mention in that sentence, of any entity, in the order they "
             "appear — including repeats of the same wording and mentions nested "
             "in one another. Do not deduplicate: three references means three "
             "entries, and they are matched left to right."
@@ -122,30 +163,18 @@ class SentenceMentions(BaseModel):
     @field_validator("sentence", mode="before")
     @classmethod
     def _clean(cls, value: object) -> object:
-        return "" if value is None else str(value).strip()
+        return _stripped(value)
 
 
-class EntityCandidate(BaseModel):
-    """A predicted entity: one real-world referent and all mentions of it."""
+class Annotation(BaseModel):
+    """The whole answer: the roster plus the per-sentence mentions.
+
+    The signature returns these as two output fields, in this order — the
+    entities are settled before the sentences that refer to them. This model is
+    what carries them together through grounding and back.
+    """
 
     model_config = ConfigDict(extra="ignore")
 
-    name: str = Field(
-        default="",
-        description=(
-            "Short label for the entity, used only to keep the clustering "
-            "readable (e.g. 'Barack Obama'). Not part of the stored annotation."
-        ),
-    )
-    type: EntityType = Field(
-        description="Which of the listed entity types this entity belongs to."
-    )
-    sentences: List[SentenceMentions] = Field(
-        default_factory=list,
-        description=(
-            "One entry per sentence that contains mentions of this entity, in "
-            "document order. Two mentions of the same referent always belong to "
-            "the same entity; two different referents are never merged, even "
-            "when they share a name."
-        ),
-    )
+    entities: List[EntityCandidate] = Field(default_factory=list)
+    sentences: List[SentenceMentions] = Field(default_factory=list)
