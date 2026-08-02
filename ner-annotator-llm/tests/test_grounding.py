@@ -1,14 +1,14 @@
 import pytest
 
 from ner_annotator_llm.grounding import (
-    DUPLICATE_LABEL,
+    DUPLICATE_NAME,
     DUPLICATE_MENTION,
     EMPTY_MENTION,
     INVALID_CANDIDATE,
     MENTION_NOT_FOUND,
     MENTION_OUTSIDE_SENTENCE,
     SENTENCE_NOT_FOUND,
-    UNKNOWN_LABEL,
+    UNKNOWN_ENTITY,
     UNUSED_ENTITY,
     entities_to_json,
     resolve_entities,
@@ -25,7 +25,7 @@ from ner_annotator_llm.schema import (
 class Answer:
     """Build an :class:`Annotation` the way the model writes one.
 
-    ``declare`` adds a roster entry and returns its label; ``say`` adds mentions
+    ``declare`` adds a roster entry and returns its name; ``say`` adds mentions
     to a sentence, creating that sentence's entry on first use — so the tests
     read like the answer: entities first, then each sentence once.
     """
@@ -34,20 +34,19 @@ class Answer:
         self.entities = []
         self.sentences = []
 
-    def declare(self, name="e", type="PER", label=None):
-        label = label or f"e{len(self.entities) + 1}"
-        self.entities.append(EntityCandidate(label=label, type=type, name=name))
-        return label
+    def declare(self, name="e", type="PER"):
+        self.entities.append(EntityCandidate(name=name, type=type))
+        return name
 
     def say(self, sentence, *mentions):
-        """``mentions`` are ``(label, text)`` or ``(label, text, flags)``."""
+        """``mentions`` are ``(entity, text)`` or ``(entity, text, flags)``."""
         group = next((g for g in self.sentences if g.sentence == sentence), None)
         if group is None:
             group = SentenceMentions(sentence=sentence, mentions=[])
             self.sentences.append(group)
         for m in mentions:
             group.mentions.append(
-                MentionCandidate(label=m[0], text=m[1], **(m[2] if len(m) > 2 else {}))
+                MentionCandidate(entity=m[0], text=m[1], **(m[2] if len(m) > 2 else {}))
             )
         return self
 
@@ -59,9 +58,9 @@ class Answer:
 def one(*mentions, name="e", type="PER"):
     """The common case: a single entity, mentions given as ``(text, sentence)``."""
     answer = Answer()
-    label = answer.declare(name=name, type=type)
+    entity = answer.declare(name=name, type=type)
     for m in mentions:
-        answer.say(m[1], (label, m[0], m[2] if len(m) > 2 else {}))
+        answer.say(m[1], (entity, m[0], m[2] if len(m) > 2 else {}))
     return answer.annotation
 
 
@@ -216,8 +215,10 @@ def test_a_verbatim_repeated_sentence_hands_out_its_occurrences_in_order():
     ann = answer.declare(name="Ann")
     # The document says it twice, so the model quotes it twice.
     answer.sentences = [
-        SentenceMentions(sentence="Ann arrived.", mentions=[MentionCandidate(label=ann, text="Ann")]),
-        SentenceMentions(sentence="Ann arrived.", mentions=[MentionCandidate(label=ann, text="Ann")]),
+        SentenceMentions(sentence="Ann arrived.",
+                         mentions=[MentionCandidate(entity=ann, text="Ann")]),
+        SentenceMentions(sentence="Ann arrived.",
+                         mentions=[MentionCandidate(entity=ann, text="Ann")]),
     ]
     res = resolve_entities(text, answer.annotation)
     assert spans(res) == [[[(0, 3)], [(13, 16)]]]
@@ -318,49 +319,62 @@ def test_fuzzy_sentence_still_anchors_the_window():
     assert res.problems == []
 
 
-# --- labels -----------------------------------------------------------------
+# --- entity names ----------------------------------------------------------
 
 
-def test_a_label_that_matches_nothing_drops_the_mention():
+def test_a_name_that_matches_nothing_drops_the_mention():
     text = "Alice met Bob."
     answer = Answer()
     alice = answer.declare(name="Alice")
-    answer.say(text, (alice, "Alice"), ("nobody", "Bob"))
+    answer.say(text, (alice, "Alice"), ("nobody at all", "Bob"))
 
     res = resolve_entities(text, answer.annotation)
     assert entities_to_json(res.entities) == [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}]
     problem, = res.problems
-    assert (problem.reason, problem.dropped, problem.label, problem.mention) == (
-        UNKNOWN_LABEL, True, "nobody", "Bob"
+    assert (problem.reason, problem.dropped, problem.name, problem.mention) == (
+        UNKNOWN_ENTITY, True, "nobody at all", "Bob"
     )
 
 
-@pytest.mark.parametrize("written", ["E1", " e1 ", "e-1", "Alice Cooper"])
-def test_near_miss_labels_are_matched_to_the_declared_one(written):
+@pytest.mark.parametrize("written", ["Alice Cooper", "alice cooper", "Alice  Cooper!", "Alice"])
+def test_near_miss_names_are_matched_to_the_declared_entity(written):
+    """Case, punctuation and an unambiguous short form all still land."""
     text = "Alice met Bob."
     answer = Answer()
-    answer.declare(name="Alice Cooper", label="e1")
+    answer.declare(name="Alice Cooper")
     answer.say(text, (written, "Alice"))
 
     res = resolve_entities(text, answer.annotation)
     assert entities_to_json(res.entities) == [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}]
-    assert all(p.reason != UNKNOWN_LABEL for p in res.problems)
+    assert all(p.reason != UNKNOWN_ENTITY for p in res.problems)
 
 
-def test_a_reused_label_is_reported_and_the_second_entity_dropped():
+def test_an_ambiguous_short_form_is_not_guessed():
+    text = "Smith met Smith."
+    answer = Answer()
+    answer.declare(name="Smith (the lawyer)")
+    answer.declare(name="Smith (the judge)")
+    answer.say(text, ("Smith", "Smith"))
+
+    res = resolve_entities(text, answer.annotation)
+    assert res.entities == []
+    assert [p.reason for p in res.problems] == [UNKNOWN_ENTITY, UNUSED_ENTITY, UNUSED_ENTITY]
+
+
+def test_two_entities_declared_under_one_name_are_reported():
     text = "Alice met Bob."
     answer = Answer()
-    answer.declare(name="Alice", label="e1")
-    answer.declare(name="Bob", label="e1")
-    answer.say(text, ("e1", "Alice"), ("e1", "Bob"))
+    answer.declare(name="Alice")
+    answer.declare(name="Alice", type="LOC")
+    answer.say(text, ("Alice", "Alice"), ("Alice", "Bob"))
 
     res = resolve_entities(text, answer.annotation)
     # Both mentions land on the one surviving entity.
     assert entities_to_json(res.entities) == [
         {"type": "PER", "mentions": [{"start": 0, "end": 5}, {"start": 10, "end": 13}]}
     ]
-    duplicate, = [p for p in res.problems if p.reason == DUPLICATE_LABEL]
-    assert (duplicate.label, duplicate.name, duplicate.dropped) == ("e1", "Bob", True)
+    duplicate, = [p for p in res.problems if p.reason == DUPLICATE_NAME]
+    assert (duplicate.name, duplicate.dropped) == ("Alice", True)
 
 
 def test_a_declared_entity_nobody_mentions_is_reported():
@@ -377,7 +391,7 @@ def test_a_declared_entity_nobody_mentions_is_reported():
 
 
 def test_an_answer_that_does_not_parse_is_reported_not_raised():
-    res = resolve_entities("Alice met Bob.", {"entities": [{"label": "e1", "type": "GENRE"}]})
+    res = resolve_entities("Alice met Bob.", {"entities": [{"name": "e1", "type": "GENRE"}]})
     assert res.entities == []
     problem, = res.problems
     assert (problem.reason, problem.dropped) == (INVALID_CANDIDATE, True)
@@ -387,8 +401,8 @@ def test_an_answer_that_does_not_parse_is_reported_not_raised():
 def test_a_plain_dict_answer_is_accepted():
     text = "Alice met Bob."
     res = resolve_entities(text, {
-        "entities": [{"label": "e1", "type": "PER", "name": "Alice"}],
-        "sentences": [{"sentence": text, "mentions": [{"label": "e1", "text": "Alice"}]}],
+        "entities": [{"name": "Alice", "type": "PER"}],
+        "sentences": [{"sentence": text, "mentions": [{"entity": "Alice", "text": "Alice"}]}],
     })
     assert entities_to_json(res.entities) == [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}]
 

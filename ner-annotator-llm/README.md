@@ -58,13 +58,13 @@ meant to be edited:
 `guidelines` is a string, or a list of lines joined with newlines — easier to edit inside JSON.
 Keys starting with `$` are comments.
 
-That file is the **single source of truth for the label set**. Adding a key to it:
+That file is the **single source of truth for the type set**. Adding a key to it:
 
 - adds a member to the `EntityType` enum, which is the type of `EntityCandidate.type`, so the
   model is offered a closed list and a predicted type is validated rather than trusted;
 - adds `KEY — description` to the index at the top of the prompt, and a `# KEY — description`
   section with the full rules below it;
-- makes that label valid in the output.
+- makes that type valid in the output.
 
 No code changes, and no second pass over the document — the model classifies each entity it finds
 into one of the keys. Ships with `PER`, `JOB_TITLE`, `LOC`, `ORG` and `TIME`.
@@ -83,21 +83,25 @@ entity_guidelines=...)` overrides them outright.
 
 ## What the model returns
 
-Two parts, in this order. First a **roster** of the distinct entities, each with a short unique
-label. Then the **sentences**: every sentence containing a mention, quoted once for the whole
-document, holding every mention in it tagged with the label of the entity it refers to.
+Two parts, in this order. First a **roster** of the distinct entities, each under a unique name.
+Then the **sentences**: every sentence containing a mention, quoted once for the whole document,
+holding every mention in it tagged with the name of the entity it refers to.
 
 ```json
-{"entities": [{"label": "e1", "type": "PER", "name": "Barack Obama"},
-              {"label": "e2", "type": "PER", "name": "his wife"},
-              {"label": "e3", "type": "LOC", "name": "Chicago"}],
+{"entities": [{"name": "Barack Obama", "type": "PER"},
+              {"name": "Michelle Obama", "type": "PER"},
+              {"name": "Chicago", "type": "LOC"}],
  "sentences": [{"sentence": "Obama said that he and his wife had left Chicago.",
-                "mentions": [{"label": "e1", "text": "Obama"},
-                             {"label": "e1", "text": "he"},
-                             {"label": "e1", "text": "his", "implicit": true},
-                             {"label": "e2", "text": "his wife", "relative": true},
-                             {"label": "e3", "text": "Chicago"}]}]}
+                "mentions": [{"entity": "Barack Obama", "text": "Obama"},
+                             {"entity": "Barack Obama", "text": "he"},
+                             {"entity": "Barack Obama", "text": "his", "implicit": true},
+                             {"entity": "Michelle Obama", "text": "his wife", "relative": true},
+                             {"entity": "Chicago", "text": "Chicago"}]}]}
 ```
+
+The name **is** the identifier — there is no separate id to keep in sync. Two entities that would
+share a name are told apart with a distinguishing detail ("Smith (the lawyer)" / "Smith (the
+judge)"), which the guidelines ask for and `to_annotation` does with a numeric suffix.
 
 Quoting each sentence **once for the document** — rather than once per entity that occurs in it —
 is where the answer's cost is. On a paragraph with several entities per sentence this roughly
@@ -109,10 +113,11 @@ The sentence still does the disambiguating work — it says *which* occurrence o
 when the document has five. Repeated wording is not deduplicated: three references means three
 entries, matched left to right.
 
-The price is referential integrity: a mention's `label` has to exist in the roster. Labels are
-resolved leniently — `E1` for `e1`, or the entity's name instead of its label, still land on the
-right entity — but never invented; a label matching nothing is reported and the mention dropped,
-because without a roster entry there is no type to give it.
+The price is referential integrity: a mention's `entity` has to name a roster entry. Names are
+resolved leniently — different case or punctuation, and an unambiguous short form ("Obama" for
+"Barack Obama") — but never invented; a name matching nothing, or matching two entries equally
+well, is reported and the mention dropped, because without a roster entry there is no type to give
+it.
 
 A **non-continuous** mention is written as its fragments joined by `[…]`: in *"Annie and George
 Washington visited Mount Vernon"*, the wife is `"Annie[…]Washington"`, one mention split by the
@@ -135,7 +140,7 @@ when true. `Entity`, `Mention` and `Fragment` are plain dataclasses; `entities_t
 
 `resolve_entities` locates each quoted sentence in the document **once**, then places every mention
 of that sentence inside the window, in order, with backtracking across fragments, and files each
-one under the entity its label names. Matching runs over a normalised copy of the text (whitespace
+one under the entity it names. Matching runs over a normalised copy of the text (whitespace
 collapsed, case folded, curly quotes and dashes flattened, bidi and zero-width marks dropped) with
 a per-character index map back to the original, so a model that reflows a line break or straightens
 a quote still lands on the right characters.
@@ -154,7 +159,7 @@ a quote still lands on the right characters.
   mentions is pruned, an answer that does not even parse is reported instead of raising, and every
   deviation lands in `Resolution.problems` with a reason and a `dropped` flag:
   `sentence-not-found`, `mention-outside-sentence`, `mention-not-found`, `empty-mention`,
-  `duplicate-mention`, `unknown-label`, `duplicate-label`, `unused-entity`, `invalid-candidate`.
+  `duplicate-mention`, `unknown-entity`, `duplicate-name`, `unused-entity`, `invalid-candidate`.
 
 ## From annotated data: round-trip and few-shot demos
 
@@ -165,13 +170,13 @@ schema becomes the quoted, sentence-grouped format the model answers in:
 from ner_annotator_llm import to_annotation
 
 to_annotation(text, [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}])
-# Annotation(entities=[EntityCandidate(label="e1", type=PER, name="Annie")],
+# Annotation(entities=[EntityCandidate(name="Annie", type=PER)],
 #            sentences=[SentenceMentions(sentence="Annie waved.",
-#                mentions=[MentionCandidate(label="e1", text="Annie")])])
+#                mentions=[MentionCandidate(entity="Annie", text="Annie")])])
 ```
 
-Entities are labelled `e1`, `e2`, … in order; every mention of every entity is filed into the
-sentence it falls in (`sentence_spans` does the segmentation — a small heuristic, since it only
+Each entity is named after its longest mention (repeats get a numeric suffix, so names stay
+unique); every mention of every entity is filed into the sentence it falls in (`sentence_spans` does the segmentation — a small heuristic, since it only
 decides how much context a demo quotes), split mentions are rejoined with `[…]`, and the flags
 carry over. A mention straddling a sentence boundary keeps both halves,
 so the quoted sentence always contains its mentions. An entity whose type is not in the registry

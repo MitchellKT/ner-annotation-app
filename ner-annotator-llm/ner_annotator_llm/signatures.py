@@ -36,11 +36,11 @@ class AnnotateEntities(dspy.Signature):
     """Find every entity in the document and every mention of each one.
 
     Answer in two parts. First `entities`: one entry per distinct referent in
-    the document, each with a short unique `label`. Then `sentences`: every
-    sentence that contains at least one mention, quoted verbatim once, holding
-    every mention in it tagged with the `label` of the entity it refers to. A
-    sentence is written once for the whole document, however many entities it
-    mentions, and every label a mention uses must be one you declared.
+    the document, each under a unique `name`. Then `sentences`: every sentence
+    that contains at least one mention, quoted verbatim once, holding every
+    mention in it tagged with the `entity` it refers to. A sentence is written
+    once for the whole document, however many entities it mentions, and every
+    entity a mention names must be one you declared.
 
     Follow `general_guidelines` for *how* to report annotations — clustering,
     quoting, the two flags. Follow `entity_guidelines` for *what* to annotate:
@@ -63,13 +63,13 @@ class AnnotateEntities(dspy.Signature):
     entities: List[EntityCandidate] = dspy.OutputField(
         desc=(
             "The distinct entities in the document, of any of the listed types, "
-            "each with a unique label the mentions refer back to."
+            "each under a unique name the mentions refer back to."
         )
     )
     sentences: List[SentenceMentions] = dspy.OutputField(
         desc=(
             "Each sentence containing mentions, quoted once, with every mention "
-            "in it and the label of the entity it refers to."
+            "in it and the name of the entity it refers to."
         )
     )
 

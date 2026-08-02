@@ -1,22 +1,22 @@
-"""The shape the LLM answers in — quoted text and entity labels, not offsets.
+"""The shape the LLM answers in — quoted text and entity names, not offsets.
 
 An LLM cannot reliably count characters, so it is never asked for ``start`` /
 ``end``. It answers in two parts instead: a **roster** of the distinct entities
-in the document, each with a short unique label, and then the **sentences**,
-each quoted once and carrying every mention in it, tagged with the label of the
+in the document, each under a unique name, and then the **sentences**, each
+quoted once and carrying every mention in it, tagged with the name of the
 entity it refers to::
 
     Annotation(
-        entities=[EntityCandidate(label="e1", type=PER, name="Barack Obama"),
-                  EntityCandidate(label="e2", type=PER, name="Michelle Obama"),
-                  EntityCandidate(label="e3", type=LOC, name="Chicago")],
+        entities=[EntityCandidate(name="Barack Obama", type=PER),
+                  EntityCandidate(name="Michelle Obama", type=PER),
+                  EntityCandidate(name="Chicago", type=LOC)],
         sentences=[SentenceMentions(
             sentence="Obama said that he and his wife had left Chicago.",
-            mentions=[MentionCandidate(label="e1", text="Obama"),
-                      MentionCandidate(label="e1", text="he"),
-                      MentionCandidate(label="e1", text="his", implicit=True),
-                      MentionCandidate(label="e2", text="his wife", relative=True),
-                      MentionCandidate(label="e3", text="Chicago")]),
+            mentions=[MentionCandidate(entity="Barack Obama", text="Obama"),
+                      MentionCandidate(entity="Barack Obama", text="he"),
+                      MentionCandidate(entity="Barack Obama", text="his", implicit=True),
+                      MentionCandidate(entity="Michelle Obama", text="his wife", relative=True),
+                      MentionCandidate(entity="Chicago", text="Chicago")]),
         ],
     )
 
@@ -27,9 +27,9 @@ per entity, and the model walks the text once instead of re-reading it per
 entity. The sentence still does the disambiguating work — it says *which*
 occurrence of "Obama" is meant when the document has five.
 
-The price is referential integrity: a mention's ``label`` has to exist in the
-roster. :mod:`.grounding` resolves labels leniently and reports what it cannot
-match rather than guessing.
+The price is referential integrity: a mention's ``entity`` has to name one of
+the roster entries. :mod:`.grounding` resolves names leniently and reports what
+it cannot match rather than guessing.
 
 A **non-continuous** mention is written as its fragments joined by ``[…]`` —
 e.g. ``"Annie[…]Washington"`` for the mention *Annie Washington* in *"Annie and
@@ -74,39 +74,36 @@ def _stripped(value: object) -> str:
 
 
 class EntityCandidate(BaseModel):
-    """One entry in the roster: a distinct referent, its label and its type."""
+    """One entry in the roster: a distinct referent, named and typed."""
 
     model_config = ConfigDict(extra="ignore")
 
-    label: str = Field(
+    name: str = Field(
         description=(
-            "Short unique identifier for this entity, e.g. 'e1', 'e2'. Every "
-            "mention of it carries this exact string, so keep it short and do "
-            "not reuse one label for two entities."
+            "How this entity is named, e.g. 'Barack Obama'. It identifies the "
+            "entity — every mention of it repeats this exact string — so it must "
+            "be unique: when two entities would share a name, add a short "
+            "distinguishing detail ('Smith (the lawyer)')."
         )
     )
     type: EntityType = Field(description="Which of the listed entity types this entity is.")
-    name: str = Field(
-        default="",
-        description=(
-            "Readable label for the referent, e.g. 'Barack Obama' — how a person "
-            "would name it. Not part of the stored annotation."
-        ),
-    )
 
-    @field_validator("label", "name", mode="before")
+    @field_validator("name", mode="before")
     @classmethod
     def _clean(cls, value: object) -> object:
         return _stripped(value)
 
 
 class MentionCandidate(BaseModel):
-    """One mention: the text as it appears, and which entity it refers to."""
+    """One mention: the text as it appears, and the entity it refers to."""
 
     model_config = ConfigDict(extra="ignore")
 
-    label: str = Field(
-        description="The label of the entity this mention refers to, from the entity list."
+    entity: str = Field(
+        description=(
+            "The name of the entity this mention refers to, copied exactly from "
+            "the entity list."
+        )
     )
     text: str = Field(
         description=(
@@ -132,7 +129,7 @@ class MentionCandidate(BaseModel):
         ),
     )
 
-    @field_validator("label", "text", mode="before")
+    @field_validator("entity", "text", mode="before")
     @classmethod
     def _clean(cls, value: object) -> object:
         return _stripped(value)

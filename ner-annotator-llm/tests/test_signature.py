@@ -59,16 +59,16 @@ def test_the_prompt_carries_every_type_key_and_description():
 def test_one_pass_annotates_several_types_from_one_roster():
     stub = StubPredictor(
         entities=[
-            EntityCandidate(label="e1", type="PER", name="Annie Washington"),
-            EntityCandidate(label="e2", type="LOC", name="Mount Vernon"),
+            EntityCandidate(name="Annie Washington", type="PER"),
+            EntityCandidate(name="Mount Vernon", type="LOC"),
         ],
         sentences=[
             SentenceMentions(sentence=FIRST, mentions=[
-                MentionCandidate(label="e1", text="Annie[…]Washington"),
-                MentionCandidate(label="e2", text="Mount Vernon"),
+                MentionCandidate(entity="Annie Washington", text="Annie[…]Washington"),
+                MentionCandidate(entity="Mount Vernon", text="Mount Vernon"),
             ]),
             SentenceMentions(sentence="Annie waved.", mentions=[
-                MentionCandidate(label="e1", text="Annie"),
+                MentionCandidate(entity="Annie Washington", text="Annie"),
             ]),
         ],
     )
@@ -87,9 +87,10 @@ def test_one_pass_annotates_several_types_from_one_roster():
 
 def test_annotator_accepts_raw_dicts():
     stub = StubPredictor(
-        entities=[{"label": "e1", "type": "PER", "name": "George Washington"}],
+        entities=[{"name": "George Washington", "type": "PER"}],
         sentences=[{"sentence": FIRST,
-                    "mentions": [{"label": "e1", "text": "George Washington"}]}],
+                    "mentions": [{"entity": "George Washington",
+                                  "text": "George Washington"}]}],
     )
     prediction = EntityAnnotator(predictor=stub)(document=TEXT)
     assert prediction.entities == [{"type": "PER", "mentions": [{"start": 10, "end": 27}]}]
@@ -98,14 +99,14 @@ def test_annotator_accepts_raw_dicts():
 def test_types_narrows_the_prompt_and_the_output():
     stub = StubPredictor(
         entities=[
-            EntityCandidate(label="e1", type="LOC", name="Mount Vernon"),
-            EntityCandidate(label="e2", type="PER", name="Annie"),
+            EntityCandidate(name="Mount Vernon", type="LOC"),
+            EntityCandidate(name="Annie", type="PER"),
         ],
         sentences=[
             SentenceMentions(sentence=FIRST, mentions=[
-                MentionCandidate(label="e1", text="Mount Vernon")]),
+                MentionCandidate(entity="Mount Vernon", text="Mount Vernon")]),
             SentenceMentions(sentence="Annie waved.", mentions=[
-                MentionCandidate(label="e2", text="Annie")]),
+                MentionCandidate(entity="Annie", text="Annie")]),
         ],
     )
     prediction = EntityAnnotator(types=["PER"], predictor=stub)(document=TEXT)
@@ -147,8 +148,12 @@ def test_to_example_builds_a_compact_demo():
     example = to_example(GOLD["text"], GOLD["entities"])
     assert set(example.inputs().keys()) == {"document"}
     assert example.document == GOLD["text"]
-    assert [(e.label, e.type.value) for e in example.entities] == [("e1", "PER"), ("e2", "LOC")]
-    assert [m.label for g in example.sentences for m in g.mentions] == ["e1", "e2"]
+    assert [(e.name, e.type.value) for e in example.entities] == [
+        ("Annie[…]Washington", "PER"), ("Mount Vernon", "LOC")
+    ]
+    assert [m.entity for g in example.sentences for m in g.mentions] == [
+        "Annie[…]Washington", "Mount Vernon"
+    ]
     # The guidelines are already in the prompt; a demo must not repeat them.
     assert "general_guidelines" not in example
 

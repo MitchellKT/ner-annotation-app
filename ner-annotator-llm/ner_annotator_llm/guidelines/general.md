@@ -17,11 +17,12 @@ One entry per distinct referent in the document.
 - Two referents are never merged, even when they share a surface form. Two
   different people called "Smith" are two entities; one company and the city it
   is named after are two entities.
-- `label` is a short unique id — use `e1`, `e2`, `e3`, … in order. It is how the
-  mentions refer back to the entity, so every label must be unique, and a
-  mention must never use a label that is not in this list.
-- `name` is a readable name for the referent ("Barack Obama", "the Chancellor's
-  plan"), for a human reading the answer.
+- `name` is how the entity is named — "Barack Obama", "the Chancellor's plan".
+  It **identifies** the entity: every mention of it repeats this exact string,
+  and a mention must never name an entity that is not in this list.
+- Names must be **unique**. When two entities would end up with the same name,
+  add a short distinguishing detail: "Smith (the lawyer)" and "Smith (the
+  judge)", "Washington (the city)" and "Washington (the president)".
 - `type` is one of the types in the entity guidelines, and nothing else.
 - List an entity only if it is actually mentioned in the document. Annotate only
   what the text says: do not add entities implied by world knowledge, and do not
@@ -38,14 +39,15 @@ one mention of any entity**, give one entry:
   mentions, so when the same wording occurs more than once in the document,
   quote the occurrence you mean.
 - `mentions` holds **every** mention in that sentence, of **every** entity, in
-  the order they appear. Each carries the `label` of the entity it refers to and
-  the mention `text` copied verbatim.
+  the order they appear. Each carries the `entity` it refers to — the name from
+  the entity list, copied exactly — and the mention `text` copied verbatim.
 
 > "Obama said that he and his wife had left Chicago, where Obama grew up."
 
-is a single entry whose mentions are `Obama` (e1), `he` (e1), `his` (e1),
-`his wife` (e2), `Chicago` (e3) and `Obama` (e1) — six entries, in that order,
-under one quoted sentence.
+is a single entry whose mentions are `Obama` (Barack Obama), `he` (Barack
+Obama), `his` (Barack Obama), `his wife` (Michelle Obama), `Chicago` (Chicago)
+and `Obama` (Barack Obama) — six entries, in that order, under one quoted
+sentence.
 
 Rules for this part:
 

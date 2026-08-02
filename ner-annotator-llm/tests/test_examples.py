@@ -115,25 +115,39 @@ def test_empty_text_has_no_sentences():
 # --- conversion -------------------------------------------------------------
 
 
-def test_entities_are_declared_once_with_labels():
+def test_entities_are_declared_once_under_their_longest_mention():
     doc = DOCS[0]
     annotation = to_annotation(doc["text"], doc["entities"])
-    assert [(e.label, e.type.value, e.name) for e in annotation.entities] == [
-        ("e1", "PER", "Barack Obama"),
-        ("e2", "LOC", "Chicago"),
-        ("e3", "ORG", "City Council"),
+    assert [(e.name, e.type.value) for e in annotation.entities] == [
+        ("Barack Obama", "PER"),
+        ("Chicago", "LOC"),
+        ("City Council", "ORG"),
     ]
+
+
+def test_entities_that_would_share_a_name_are_told_apart():
+    text = "Washington met Washington."
+    entities = [{"type": "PER", "mentions": [{"start": 0, "end": 10}]},
+                {"type": "PER", "mentions": [{"start": 15, "end": 25}]}]
+    annotation = to_annotation(text, entities)
+    assert [e.name for e in annotation.entities] == ["Washington", "Washington (2)"]
+    assert [m.entity for g in annotation.sentences for m in g.mentions] == [
+        "Washington", "Washington (2)"
+    ]
+    # And the disambiguated names still round-trip.
+    assert entities_to_json(resolve_entities(text, annotation).entities) == entities
 
 
 def test_each_sentence_appears_once_carrying_every_entity_in_it():
     doc = DOCS[0]
     annotation = to_annotation(doc["text"], doc["entities"])
-    assert [(g.sentence, [(m.label, m.text) for m in g.mentions])
+    assert [(g.sentence, [(m.entity, m.text) for m in g.mentions])
             for g in annotation.sentences] == [
         ("Barack Obama was born in Hawaii.",
-         [("e1", "Barack Obama"), ("e1", "Obama"), ("e2", "Hawaii")]),
+         [("Barack Obama", "Barack Obama"), ("Barack Obama", "Obama"), ("Chicago", "Hawaii")]),
         ("Obama later moved to Chicago, where he worked for the City Council.",
-         [("e1", "Obama"), ("e2", "Chicago"), ("e1", "he"), ("e3", "City Council")]),
+         [("Barack Obama", "Obama"), ("Chicago", "Chicago"),
+          ("Barack Obama", "he"), ("City Council", "City Council")]),
     ]
 
 
@@ -141,8 +155,10 @@ def test_split_mentions_use_the_fragment_separator():
     doc = DOCS[1]
     annotation = to_annotation(doc["text"], doc["entities"])
     group, = annotation.sentences
-    assert [(m.label, m.text) for m in group.mentions] == [
-        ("e1", "Annie[…]Washington"), ("e2", "George Washington"), ("e3", "Mount Vernon"),
+    assert [(m.entity, m.text) for m in group.mentions] == [
+        ("Annie[…]Washington", "Annie[…]Washington"),
+        ("George Washington", "George Washington"),
+        ("Mount Vernon", "Mount Vernon"),
     ]
     assert annotation.entities[0].name == "Annie[…]Washington"
 

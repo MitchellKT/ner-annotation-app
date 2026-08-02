@@ -188,8 +188,8 @@ prediction.problems   # mentions that could not be grounded, with the reason
 ```
 
 An LLM cannot count characters, so it is never asked for offsets. It answers in two parts: a
-**roster** of the distinct entities, each with a short unique label, then the **sentences** —
-each quoted once for the whole document, carrying every mention in it tagged with its entity's label,
+**roster** of the distinct entities, each under a unique name, then the **sentences** —
+each quoted once for the whole document, carrying every mention in it tagged with its entity's name,
 with non-continuous mentions written as `"Annie[…]Washington"`. Quoting a sentence once instead of
 once per entity roughly halves the answer on entity-dense text. Grounding maps it back to
 code-point offsets and drops — never invents — whatever fails to match. Write the entities into a

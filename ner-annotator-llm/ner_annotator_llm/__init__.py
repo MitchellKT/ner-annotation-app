@@ -1,9 +1,9 @@
 """LLM-assisted annotation: a DSPy signature plus grounding to character offsets.
 
 The LLM quotes text rather than counting characters: it returns a roster of
-labelled entities and then the sentences that mention them, each sentence
-quoted once and each mention tagged with its entity's label (fragments of a
-split mention joined by ``[…]``). :mod:`.grounding` turns that into character
+named entities and then the sentences that mention them, each sentence quoted
+once and each mention tagged with its entity's name (fragments of a split
+mention joined by ``[…]``). :mod:`.grounding` turns that into character
 offsets. One signature annotates every entity type in
 ``guidelines/entities.json``.
 

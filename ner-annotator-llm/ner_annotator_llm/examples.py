@@ -2,12 +2,12 @@
 
 This is the inverse of :mod:`.grounding`: it takes an annotation in the
 character-level schema — the thing an annotator produced, or a gold corpus —
-and rewrites it as the labelled, per-sentence output the signature asks for::
+and rewrites it as the named, per-sentence output the signature asks for::
 
     {"type": "PER", "mentions": [{"start": 0, "end": 5}]}
-        ->  Annotation(entities=[EntityCandidate(label="e1", type=PER, name="Annie")],
+        ->  Annotation(entities=[EntityCandidate(name="Annie", type=PER)],
                        sentences=[SentenceMentions(sentence="Annie waved.",
-                           mentions=[MentionCandidate(label="e1", text="Annie")])])
+                           mentions=[MentionCandidate(entity="Annie", text="Annie")])])
 
 Two uses. As a **check**: running the result back through
 :func:`~.grounding.resolve_entities` must reproduce the original offsets, which
@@ -170,15 +170,17 @@ def to_annotation(
     entities: Iterable[Union[Entity, dict]],
     *,
     skip_unknown_types: bool = False,
-    label_prefix: str = "e",
 ) -> Annotation:
     """Rewrite a character-level annotation as the model's output format.
 
     ``entities`` are :class:`~.grounding.Entity` objects or their JSON form.
-    Each gets a label (``e1``, ``e2``, … in the order given), and every mention
-    of every entity is filed under the sentence it falls in, ordered by
-    position — the roster-plus-sentences shape :class:`~.schema.Annotation`
-    describes.
+    Each is named after its longest mention, and every mention of every entity
+    is filed under the sentence it falls in, ordered by position — the
+    roster-plus-sentences shape :class:`~.schema.Annotation` describes.
+
+    Names identify entities, so two entities that would share one are told apart
+    with a numeric suffix ("Washington", "Washington (2)") the way the model is
+    asked to tell them apart.
 
     An entity whose ``type`` is not in ``guidelines/entities.json`` cannot be
     represented — the model is only offered the registered labels — so it raises
@@ -188,8 +190,7 @@ def to_annotation(
     if parsed and isinstance(parsed[0], dict):
         parsed = entities_from_json(parsed)  # type: ignore[arg-type]
 
-    roster: List[EntityCandidate] = []
-    labelled: List[Tuple[str, Entity]] = []
+    kept: List[Entity] = []
     for entity in parsed:
         if entity.type not in ENTITY_GUIDELINES:
             if skip_unknown_types:
@@ -200,35 +201,44 @@ def to_annotation(
                 f"(known types: {known}); add it to entities.json or pass "
                 f"skip_unknown_types=True"
             )
-        if not entity.mentions:
-            continue
-        label = f"{label_prefix}{len(roster) + 1}"
-        roster.append(
-            EntityCandidate(label=label, type=entity.type, name=_entity_name(text, entity))
-        )
-        labelled.append((label, entity))
+        if entity.mentions:
+            kept.append(entity)
 
+    names = _unique_names([_entity_name(text, entity) for entity in kept])
+    roster = [
+        EntityCandidate(name=name, type=entity.type) for name, entity in zip(names, kept)
+    ]
     return Annotation(
         entities=roster,
-        sentences=_group_by_sentence(text, sentence_spans(text), labelled),
+        sentences=_group_by_sentence(text, sentence_spans(text), list(zip(names, kept))),
     )
+
+
+def _unique_names(names: Sequence[str]) -> List[str]:
+    """Disambiguate repeated names with a numeric suffix, keeping order."""
+    seen: Dict[str, int] = {}
+    out: List[str] = []
+    for name in names:
+        seen[name] = seen.get(name, 0) + 1
+        out.append(name if seen[name] == 1 else f"{name} ({seen[name]})")
+    return out
 
 
 def _group_by_sentence(
     text: str,
     spans: Sequence[Span],
-    labelled: Sequence[Tuple[str, Entity]],
+    named: Sequence[Tuple[str, Entity]],
 ) -> List[SentenceMentions]:
     """Every mention of every entity, bucketed into the sentence it falls in."""
     grouped: Dict[Span, List[Tuple[int, MentionCandidate]]] = {}
-    for label, entity in labelled:
+    for name, entity in named:
         for mention in entity.mentions:
             window = _covering_span(spans, mention)
             grouped.setdefault(window, []).append(
                 (
                     mention.fragments[0].start,
                     MentionCandidate(
-                        label=label,
+                        entity=name,
                         text=_mention_text(text, mention),
                         relative=mention.relative,
                         implicit=mention.implicit,
