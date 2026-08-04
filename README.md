@@ -184,7 +184,7 @@ from ner_annotator_llm import EntityAnnotator
 dspy.configure(lm=dspy.LM("anthropic/claude-sonnet-5"))
 prediction = EntityAnnotator()(document=text)
 prediction.entities   # [{"type": "PER", "mentions": [{"start": 0, "end": 12}]}, ...] — on schema
-prediction.problems   # mentions that could not be grounded, with the reason
+prediction.unresolved # mentions that could not be grounded
 ```
 
 An LLM cannot count characters, so it is never asked for offsets. It answers in two parts: a
@@ -195,12 +195,12 @@ once per entity roughly halves the answer on entity-dense text. Grounding maps i
 code-point offsets and drops — never invents — whatever fails to match. Write the entities into a
 `.jsonl` alongside `doc_id` / `text` and open it with `--input` to refine.
 
-One pass annotates every entity type. The label set and its guidelines live in
-`ner-annotator-llm/ner_annotator_llm/guidelines/` — `general.md` for how to report annotations and
-`entities.json` for the per-type rules (`PER`, `JOB_TITLE`, `LOC`, `ORG`, `TIME` out of the box).
-Adding a key to that JSON adds the type to the enum the model must choose from and to the prompt;
-no code change. Note that these are the *annotator's* types — the app's `--types` is set
-separately, so keep the two in step.
+One pass annotates every entity type. The guidelines are the signature's *instructions* and live as
+markdown in `ner-annotator-llm/ner_annotator_llm/guidelines/` — `general.md` for how to report
+annotations, and one file per type in `entities/` (`PER.md`, `JOB_TITLE.md`, `LOC.md`, `ORG.md`,
+`TIME.md`). Dropping a file into `entities/` adds that type to the enum the model must choose from
+and to the prompt; no code change. Note that these are the *annotator's* types — the app's
+`--types` is set separately, so keep the two in step.
 
 The conversion also runs backwards: `to_annotation` turns an annotated document (this `.jsonl`
 schema) into the model's format, which both round-trip-tests the grounding and turns a corpus you
@@ -340,7 +340,7 @@ backend/ner_annotator/   models.py · store.py · workspace.py            (per-u
                          mongo.py                                       (optional MongoDB mirror)
                          main.py · __main__.py                          (FastAPI app + CLI)
 ner-annotator-llm/       signatures.py · grounding.py · examples.py     (standalone package:
-                         guidelines/general.md · entities.json           LLM predictions)
+                         guidelines/general.md · guidelines/entities/     LLM predictions)
 frontend/src/            lib/segments.ts · lib/offsets.ts               (rendering & selection core)
                          store.ts · api.ts · components/ · hooks/       (UI, incl. login + source select)
 sample/input.jsonl       example docs: metadata, predictions, from-scratch, nested, unicode

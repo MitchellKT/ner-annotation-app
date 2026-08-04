@@ -29,12 +29,10 @@ from .grounding import (
     Entity,
     Fragment,
     Mention,
-    Problem,
     Resolution,
     entities_from_json,
     entities_to_json,
     resolve_entities,
-    unicode_safe,
 )
 from .guidelines import (
     ENTITY_GUIDELINES,
@@ -42,7 +40,6 @@ from .guidelines import (
     EntityGuideline,
     EntityType,
     entity_guidelines_block,
-    entity_types_block,
     guidelines_for,
 )
 from .schema import (
@@ -56,6 +53,7 @@ from .schema import (
 
 __all__ = [
     "AnnotateEntities",
+    "annotate_signature",
     "Annotation",
     "ENTITY_GUIDELINES",
     "Entity",
@@ -68,13 +66,11 @@ __all__ = [
     "GENERAL_GUIDELINES",
     "Mention",
     "MentionCandidate",
-    "Problem",
     "Resolution",
     "SentenceMentions",
     "entities_from_json",
     "entities_to_json",
     "entity_guidelines_block",
-    "entity_types_block",
     "examples_from_jsonl",
     "examples_from_records",
     "guidelines_for",
@@ -83,10 +79,9 @@ __all__ = [
     "split_fragments",
     "to_annotation",
     "to_example",
-    "unicode_safe",
 ]
 
-_LAZY = {"AnnotateEntities", "EntityAnnotator"}
+_LAZY = {"AnnotateEntities", "EntityAnnotator", "annotate_signature"}
 
 
 def __getattr__(name: str) -> Any:

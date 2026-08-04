@@ -1,6 +1,7 @@
 import json
 
 import pytest
+from pydantic import ValidationError
 
 from ner_annotator_llm.examples import (
     examples_from_records,
@@ -190,15 +191,11 @@ def test_entities_may_be_given_as_objects_or_json():
     assert from_json == from_objects
 
 
-def test_unknown_entity_type_raises_or_is_skipped():
+def test_a_type_with_no_guidelines_file_cannot_be_represented():
     text = "Alice met Bob."
-    entities = [{"type": "MISC", "mentions": [{"start": 0, "end": 5}]},
-                {"type": "PER", "mentions": [{"start": 10, "end": 13}]}]
-    with pytest.raises(ValueError, match="not in the guidelines registry"):
+    entities = [{"type": "MISC", "mentions": [{"start": 0, "end": 5}]}]
+    with pytest.raises(ValidationError):
         to_annotation(text, entities)
-    kept = to_annotation(text, entities, skip_unknown_types=True)
-    assert [c.type.value for c in kept.entities] == ["PER"]
-    assert [m.text for g in kept.sentences for m in g.mentions] == ["Bob"]
 
 
 def test_entities_without_mentions_are_dropped():
@@ -214,7 +211,7 @@ def test_round_trip_reproduces_the_original_offsets(doc):
     annotation = to_annotation(doc["text"], doc["entities"])
     resolution = resolve_entities(doc["text"], annotation)
     assert entities_to_json(resolution.entities) == doc["entities"]
-    assert resolution.problems == []
+    assert resolution.unresolved == []
 
 
 def test_round_trip_survives_a_json_encode_decode():

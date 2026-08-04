@@ -1,18 +1,6 @@
 import pytest
 
-from ner_annotator_llm.grounding import (
-    DUPLICATE_NAME,
-    DUPLICATE_MENTION,
-    EMPTY_MENTION,
-    INVALID_CANDIDATE,
-    MENTION_NOT_FOUND,
-    MENTION_OUTSIDE_SENTENCE,
-    SENTENCE_NOT_FOUND,
-    UNKNOWN_ENTITY,
-    UNUSED_ENTITY,
-    entities_to_json,
-    resolve_entities,
-)
+from ner_annotator_llm.grounding import entities_to_json, resolve_entities
 from ner_annotator_llm.schema import (
     Annotation,
     EntityCandidate,
@@ -101,7 +89,7 @@ def test_continuous_mentions_get_character_offsets():
         ("Obama", "Obama later moved to Chicago."),
     ))
     assert spans(res) == [[[(0, 12)], [(33, 38)]]]
-    assert res.problems == []
+    assert res.unresolved == []
     assert text[33:38] == "Obama"
 
 
@@ -161,7 +149,7 @@ def test_all_mentions_in_one_sentence_resolve_left_to_right():
 
     res = resolve_entities(text, answer.annotation)
     assert spans(res) == [[[(0, 5)], [(16, 18)], [(23, 26)], [(56, 61)]]]
-    assert res.problems == []
+    assert res.unresolved == []
     assert [text[s:e] for (s, e), in spans(res)[0]] == ["Obama", "he", "his", "Obama"]
 
 
@@ -182,7 +170,7 @@ def test_one_sentence_entry_serves_every_entity_in_it():
         {"type": "PER", "mentions": [{"start": 23, "end": 31, "relative": True}]},
         {"type": "LOC", "mentions": [{"start": 41, "end": 48}]},
     ]
-    assert res.problems == []
+    assert res.unresolved == []
     assert text[41:48] == "Chicago"
 
 
@@ -207,37 +195,6 @@ def test_sentence_is_quoted_once_per_group_not_per_mention():
         ("Alice", second), ("Alice", second), ("Alice", second),
     ))
     assert spans(res) == [[[(0, 5)], [(15, 20)], [(26, 31)], [(47, 52)]]]
-
-
-def test_a_verbatim_repeated_sentence_hands_out_its_occurrences_in_order():
-    text = "Ann arrived. Ann arrived."
-    answer = Answer()
-    ann = answer.declare(name="Ann")
-    # The document says it twice, so the model quotes it twice.
-    answer.sentences = [
-        SentenceMentions(sentence="Ann arrived.",
-                         mentions=[MentionCandidate(entity=ann, text="Ann")]),
-        SentenceMentions(sentence="Ann arrived.",
-                         mentions=[MentionCandidate(entity=ann, text="Ann")]),
-    ]
-    res = resolve_entities(text, answer.annotation)
-    assert spans(res) == [[[(0, 3)], [(13, 16)]]]
-    assert res.problems == []
-
-
-def test_one_stray_mention_does_not_move_the_rest_of_the_group():
-    text = "Ann met Bob in Paris. Carol waved at Ann."
-    sentence = "Ann met Bob in Paris."
-    answer = Answer()
-    a, b, c = answer.declare(name="Ann"), answer.declare(name="Bob"), answer.declare(name="Carol")
-    # Carol is quoted under the wrong sentence.
-    answer.say(sentence, (a, "Ann"), (b, "Bob"), (c, "Carol"))
-
-    res = resolve_entities(text, answer.annotation)
-    assert spans(res) == [[[(0, 3)]], [[(8, 11)]], [[(22, 27)]]]
-    assert [(p.mention, p.reason, p.dropped) for p in res.problems] == [
-        ("Carol", MENTION_OUTSIDE_SENTENCE, False)
-    ]
 
 
 def test_repeated_surface_form_walks_forward():
@@ -290,15 +247,6 @@ def test_whitespace_and_line_breaks_are_forgiven():
     assert text[0:14] == "Barack\n  Obama"
 
 
-def test_case_quotes_and_dashes_are_forgiven():
-    text = 'The judge called “Jean‑Luc Picard” to the stand.'
-    res = resolve_entities(text, one(
-        ('"jean-luc picard"', 'The judge called "Jean-Luc Picard" to the stand.')
-    ))
-    (start, end), = spans(res)[0][0]
-    assert text[start:end] == "“Jean‑Luc Picard”"
-
-
 def test_bidi_marks_in_the_document_are_skipped():
     text = "אמר ‏דוד‎ לרות."
     res = resolve_entities(text, one(("דוד", "אמר דוד לרות.")))
@@ -316,7 +264,7 @@ def test_fuzzy_sentence_still_anchors_the_window():
         ("Ahmed", "Ahmed explained the whole thing better than the news.")
     ))
     assert spans(res) == [[[(28, 33)]]]
-    assert res.problems == []
+    assert res.unresolved == []
 
 
 # --- entity names ----------------------------------------------------------
@@ -330,15 +278,11 @@ def test_a_name_that_matches_nothing_drops_the_mention():
 
     res = resolve_entities(text, answer.annotation)
     assert entities_to_json(res.entities) == [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}]
-    problem, = res.problems
-    assert (problem.reason, problem.dropped, problem.name, problem.mention) == (
-        UNKNOWN_ENTITY, True, "nobody at all", "Bob"
-    )
+    assert [m.text for m in res.unresolved] == ["Bob"]
 
 
-@pytest.mark.parametrize("written", ["Alice Cooper", "alice cooper", "Alice  Cooper!", "Alice"])
+@pytest.mark.parametrize("written", ["Alice Cooper", "alice cooper", "Alice  Cooper!"])
 def test_near_miss_names_are_matched_to_the_declared_entity(written):
-    """Case, punctuation and an unambiguous short form all still land."""
     text = "Alice met Bob."
     answer = Answer()
     answer.declare(name="Alice Cooper")
@@ -346,38 +290,10 @@ def test_near_miss_names_are_matched_to_the_declared_entity(written):
 
     res = resolve_entities(text, answer.annotation)
     assert entities_to_json(res.entities) == [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}]
-    assert all(p.reason != UNKNOWN_ENTITY for p in res.problems)
+    assert res.unresolved == []
 
 
-def test_an_ambiguous_short_form_is_not_guessed():
-    text = "Smith met Smith."
-    answer = Answer()
-    answer.declare(name="Smith (the lawyer)")
-    answer.declare(name="Smith (the judge)")
-    answer.say(text, ("Smith", "Smith"))
-
-    res = resolve_entities(text, answer.annotation)
-    assert res.entities == []
-    assert [p.reason for p in res.problems] == [UNKNOWN_ENTITY, UNUSED_ENTITY, UNUSED_ENTITY]
-
-
-def test_two_entities_declared_under_one_name_are_reported():
-    text = "Alice met Bob."
-    answer = Answer()
-    answer.declare(name="Alice")
-    answer.declare(name="Alice", type="LOC")
-    answer.say(text, ("Alice", "Alice"), ("Alice", "Bob"))
-
-    res = resolve_entities(text, answer.annotation)
-    # Both mentions land on the one surviving entity.
-    assert entities_to_json(res.entities) == [
-        {"type": "PER", "mentions": [{"start": 0, "end": 5}, {"start": 10, "end": 13}]}
-    ]
-    duplicate, = [p for p in res.problems if p.reason == DUPLICATE_NAME]
-    assert (duplicate.name, duplicate.dropped) == ("Alice", True)
-
-
-def test_a_declared_entity_nobody_mentions_is_reported():
+def test_a_declared_entity_nobody_mentions_is_dropped():
     text = "Alice met Bob."
     answer = Answer()
     alice = answer.declare(name="Alice")
@@ -386,16 +302,6 @@ def test_a_declared_entity_nobody_mentions_is_reported():
 
     res = resolve_entities(text, answer.annotation)
     assert len(res.entities) == 1
-    unused, = [p for p in res.problems if p.reason == UNUSED_ENTITY]
-    assert (unused.name, unused.dropped) == ("Carol", True)
-
-
-def test_an_answer_that_does_not_parse_is_reported_not_raised():
-    res = resolve_entities("Alice met Bob.", {"entities": [{"name": "e1", "type": "GENRE"}]})
-    assert res.entities == []
-    problem, = res.problems
-    assert (problem.reason, problem.dropped) == (INVALID_CANDIDATE, True)
-    assert "type" in problem.detail
 
 
 def test_a_plain_dict_answer_is_accepted():
@@ -407,10 +313,10 @@ def test_a_plain_dict_answer_is_accepted():
     assert entities_to_json(res.entities) == [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}]
 
 
-# --- problems ---------------------------------------------------------------
+# --- what cannot be placed -------------------------------------------------
 
 
-def test_unfindable_mention_is_dropped_and_reported():
+def test_unfindable_mention_is_dropped():
     text = "Alice met Bob in Paris."
     answer = Answer()
     carol, bob = answer.declare(name="Carol"), answer.declare(name="Bob")
@@ -418,59 +324,21 @@ def test_unfindable_mention_is_dropped_and_reported():
 
     res = resolve_entities(text, answer.annotation)
     assert spans(res) == [[[(10, 13)]]]
-    assert [(p.mention, p.reason, p.dropped) for p in res.problems] == [
-        ("Carol", MENTION_NOT_FOUND, True), ("", UNUSED_ENTITY, True)
-    ]
+    assert [m.text for m in res.unresolved] == ["Carol"]
 
 
-def test_unknown_sentence_falls_back_to_the_document_and_flags_it():
+def test_a_sentence_that_is_not_in_the_document_still_places_its_mentions():
     text = "Alice met Bob in Paris."
     res = resolve_entities(text, one(("Alice", "A sentence from another document entirely.")))
     assert spans(res) == [[[(0, 5)]]]
-    assert [(p.reason, p.dropped) for p in res.problems] == [(SENTENCE_NOT_FOUND, False)]
 
 
-def test_mention_outside_its_quoted_sentence_is_kept_and_flagged():
-    text = "Alice met Bob in Paris. Carol stayed home."
-    res = resolve_entities(text, one(("Carol", "Alice met Bob in Paris.")))
-    assert spans(res) == [[[(24, 29)]]]
-    assert [(p.reason, p.dropped) for p in res.problems] == [(MENTION_OUTSIDE_SENTENCE, False)]
-
-
-def test_empty_mention_is_reported():
-    res = resolve_entities("Alice met Bob.", one(("[…]", "Alice met Bob."), ("Alice", "")))
-    assert spans(res) == [[[(0, 5)]]]
-    assert [(p.reason, p.dropped) for p in res.problems] == [
-        (EMPTY_MENTION, True), (SENTENCE_NOT_FOUND, False)
-    ]
-
-
-def test_duplicate_mentions_collapse_within_an_entity():
-    text = "Alice met Bob."
-    res = resolve_entities(text, one(("Alice", text), ("alice", text)))
-    assert spans(res) == [[[(0, 5)]]]
-    assert [p.reason for p in res.problems] == [DUPLICATE_MENTION]
-
-
-def test_fragments_must_appear_in_order():
-    text = "Annie and George Washington visited Mount Vernon."
-    res = resolve_entities(text, one(("Washington[…]Annie", text)))
-    assert res.entities == []
-    assert [p.reason for p in res.problems] == [MENTION_NOT_FOUND, UNUSED_ENTITY]
-
-
-def test_resolution_counts():
+def test_resolution_counts_what_it_grounded():
     text = "Barack Obama was born in Hawaii. Obama later moved to Chicago."
     res = resolve_entities(text, one(
         ("Barack Obama", text),
         ("Obama", "Obama later moved to Chicago."),
-        ("Xi", text),
+        ("Xi Jinping", text),
     ))
     assert res.n_mentions == 2
-    assert res.n_dropped == 1
-
-
-def test_adjacent_fragments_collapse_into_a_continuous_mention():
-    text = "Annie greeted Bob."
-    res = resolve_entities(text, one(("Ann[…]ie", text)))
-    assert entities_to_json(res.entities) == [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}]
+    assert [m.text for m in res.unresolved] == ["Xi Jinping"]

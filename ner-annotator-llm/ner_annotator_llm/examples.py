@@ -30,7 +30,6 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
 from .grounding import Entity, Mention, entities_from_json
-from .guidelines import ENTITY_GUIDELINES
 from .schema import (
     FRAGMENT_SEPARATOR,
     Annotation,
@@ -165,12 +164,7 @@ def _entity_name(text: str, entity: Entity) -> str:
     return _mention_text(text, best)
 
 
-def to_annotation(
-    text: str,
-    entities: Iterable[Union[Entity, dict]],
-    *,
-    skip_unknown_types: bool = False,
-) -> Annotation:
+def to_annotation(text: str, entities: Iterable[Union[Entity, dict]]) -> Annotation:
     """Rewrite a character-level annotation as the model's output format.
 
     ``entities`` are :class:`~.grounding.Entity` objects or their JSON form.
@@ -180,30 +174,14 @@ def to_annotation(
 
     Names identify entities, so two entities that would share one are told apart
     with a numeric suffix ("Washington", "Washington (2)") the way the model is
-    asked to tell them apart.
-
-    An entity whose ``type`` is not in ``guidelines/entities.json`` cannot be
-    represented — the model is only offered the registered labels — so it raises
-    by default, or is dropped when ``skip_unknown_types`` is set.
+    asked to tell them apart. A type with no file in ``guidelines/entities/``
+    cannot be represented, and raises.
     """
     parsed = list(entities)
     if parsed and isinstance(parsed[0], dict):
         parsed = entities_from_json(parsed)  # type: ignore[arg-type]
 
-    kept: List[Entity] = []
-    for entity in parsed:
-        if entity.type not in ENTITY_GUIDELINES:
-            if skip_unknown_types:
-                continue
-            known = ", ".join(ENTITY_GUIDELINES)
-            raise ValueError(
-                f"entity type {entity.type!r} is not in the guidelines registry "
-                f"(known types: {known}); add it to entities.json or pass "
-                f"skip_unknown_types=True"
-            )
-        if entity.mentions:
-            kept.append(entity)
-
+    kept = [entity for entity in parsed if entity.mentions]
     names = _unique_names([_entity_name(text, entity) for entity in kept])
     roster = [
         EntityCandidate(name=name, type=entity.type) for name, entity in zip(names, kept)
@@ -272,37 +250,24 @@ def to_example(
     text: str,
     entities: Iterable[Union[Entity, dict]],
     *,
-    include_guidelines: bool = False,
     reasoning: Optional[str] = None,
-    skip_unknown_types: bool = False,
 ) -> Any:
     """One annotated document as a :class:`dspy.Example`, ready to use as a demo.
 
-    The guidelines are left out by default: they are already in the prompt in
-    full, and repeating them per demo would cost more than the demo itself.
-    DSPy renders such a demo as an example "though some input or output fields
-    are not supplied", which is exactly what it is. Pass
-    ``include_guidelines=True`` for a complete one, and ``reasoning`` to
-    demonstrate the chain of thought as well.
+    The document is the only input, since the guidelines live in the
+    instructions. Pass ``reasoning`` to demonstrate the chain of thought too.
     """
     import dspy  # imported here so the conversion works without DSPy installed
 
-    from .guidelines import GENERAL_GUIDELINES, entity_guidelines_block
-
-    annotation = to_annotation(text, entities, skip_unknown_types=skip_unknown_types)
+    annotation = to_annotation(text, entities)
     fields: Dict[str, Any] = {
         "document": text,
         "entities": annotation.entities,
         "sentences": annotation.sentences,
     }
-    inputs = ["document"]
-    if include_guidelines:
-        fields["general_guidelines"] = GENERAL_GUIDELINES
-        fields["entity_guidelines"] = entity_guidelines_block()
-        inputs = ["general_guidelines", "entity_guidelines", "document"]
     if reasoning is not None:
         fields["reasoning"] = reasoning
-    return dspy.Example(**fields).with_inputs(*inputs)
+    return dspy.Example(**fields).with_inputs("document")
 
 
 def examples_from_records(records: Iterable[dict], **kwargs: Any) -> List[Any]:

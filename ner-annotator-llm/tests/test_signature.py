@@ -6,7 +6,12 @@ import pytest
 
 dspy = pytest.importorskip("dspy")
 
-from ner_annotator_llm import AnnotateEntities, EntityAnnotator, EntityType  # noqa: E402
+from ner_annotator_llm import (  # noqa: E402
+    AnnotateEntities,
+    EntityAnnotator,
+    EntityType,
+    annotate_signature,
+)
 from ner_annotator_llm.schema import (  # noqa: E402
     EntityCandidate,
     MentionCandidate,
@@ -32,11 +37,8 @@ class StubPredictor(dspy.Module):
 
 
 def test_signature_fields():
-    assert list(AnnotateEntities.input_fields) == [
-        "general_guidelines",
-        "entity_guidelines",
-        "document",
-    ]
+    # The document is the only input; the guidelines are instructions.
+    assert list(AnnotateEntities.input_fields) == ["document"]
     # The roster is settled before the sentences that refer back to it.
     assert list(AnnotateEntities.output_fields) == ["entities", "sentences"]
     roster = AnnotateEntities.output_fields["entities"].annotation
@@ -45,15 +47,19 @@ def test_signature_fields():
     assert typing.get_args(grouped) == (SentenceMentions,)
 
 
-def test_the_prompt_carries_every_type_key_and_description():
+def test_the_guidelines_are_instructions_not_inputs():
+    instructions = annotate_signature().instructions
+    assert AnnotateEntities.instructions in instructions
+    assert "## Part 1 — the entity list" in instructions      # general.md
+    for member in EntityType:
+        assert f"# {member.value} —" in instructions          # entities/*.md
+    assert list(annotate_signature().input_fields) == ["document"]
+
+
+def test_the_annotator_passes_only_the_document():
     stub = StubPredictor()
     EntityAnnotator(predictor=stub)(document=TEXT)
-
-    block = stub.seen["entity_guidelines"]
-    for member in EntityType:
-        assert f"# {member.value} —" in block
-    assert "## Part 1 — the entity list" in stub.seen["general_guidelines"]
-    assert stub.seen["document"] == TEXT
+    assert stub.seen == {"document": TEXT}
 
 
 def test_one_pass_annotates_several_types_from_one_roster():
@@ -81,7 +87,7 @@ def test_one_pass_annotates_several_types_from_one_roster():
         ]},
         {"type": "LOC", "mentions": [{"start": 36, "end": 48}]},
     ]
-    assert prediction.problems == []
+    assert prediction.unresolved == []
     assert prediction.annotation.entities == stub.entities
 
 
@@ -109,23 +115,18 @@ def test_types_narrows_the_prompt_and_the_output():
                 MentionCandidate(entity="Annie", text="Annie")]),
         ],
     )
-    prediction = EntityAnnotator(types=["PER"], predictor=stub)(document=TEXT)
+    annotator = EntityAnnotator(types=["PER"], predictor=stub)
+    prediction = annotator(document=TEXT)
 
-    assert "# PER —" in stub.seen["entity_guidelines"]
-    assert "# LOC —" not in stub.seen["entity_guidelines"]
+    assert "# PER —" in annotator.signature.instructions
+    assert "# LOC —" not in annotator.signature.instructions
     # An out-of-scope entity the model returned anyway is dropped.
     assert prediction.entities == [{"type": "PER", "mentions": [{"start": 50, "end": 55}]}]
 
 
-def test_custom_guidelines_win():
-    stub = StubPredictor()
-    EntityAnnotator(
-        general_guidelines="be brief",
-        entity_guidelines="only capitals",
-        predictor=stub,
-    )(document=TEXT)
-    assert stub.seen["general_guidelines"] == "be brief"
-    assert stub.seen["entity_guidelines"] == "only capitals"
+def test_custom_instructions_win():
+    annotator = EntityAnnotator(instructions="be brief", predictor=StubPredictor())
+    assert annotator.signature.instructions == "be brief"
 
 
 # --- few-shot demos ---------------------------------------------------------
@@ -154,18 +155,13 @@ def test_to_example_builds_a_compact_demo():
     assert [m.entity for g in example.sentences for m in g.mentions] == [
         "Annie[…]Washington", "Mount Vernon"
     ]
-    # The guidelines are already in the prompt; a demo must not repeat them.
-    assert "general_guidelines" not in example
 
 
-def test_to_example_can_carry_the_guidelines_and_reasoning():
+def test_to_example_can_carry_the_reasoning():
     from ner_annotator_llm import to_example
 
-    example = to_example(GOLD["text"], GOLD["entities"],
-                         include_guidelines=True, reasoning="Two entities here.")
-    assert set(example.inputs().keys()) == {
-        "general_guidelines", "entity_guidelines", "document"
-    }
+    example = to_example(GOLD["text"], GOLD["entities"], reasoning="Two entities here.")
+    assert set(example.inputs().keys()) == {"document"}
     assert example.reasoning == "Two entities here."
 
 
@@ -195,12 +191,9 @@ def test_demos_reach_the_predictor_and_the_prompt():
     assert leaf.demos == [demo]
 
     messages = dspy.ChatAdapter().format(
-        AnnotateEntities,
-        [demo.toDict()],
-        {"general_guidelines": "G", "entity_guidelines": "E", "document": "doc"},
+        annotate_signature(), [demo.toDict()], {"document": "doc"}
     )
-    rendered = "\n".join(m["content"] for m in messages)
-    assert GOLD["text"] in rendered
-    assert "Annie[…]Washington" in rendered
-    # The sentence is quoted once in the demo, not once per entity.
-    assert rendered.count(GOLD["text"]) == 2  # once as the document, once as the sentence
+    answer, = [m["content"] for m in messages if m["role"] == "assistant"]
+    assert "Annie[…]Washington" in answer
+    # The sentence is quoted once in the demo, whatever it mentions.
+    assert answer.count(GOLD["text"]) == 1

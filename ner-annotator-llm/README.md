@@ -21,7 +21,7 @@ dspy.configure(lm=dspy.LM("anthropic/claude-sonnet-5"))
 prediction = EntityAnnotator()(document=text)
 
 prediction.entities   # [{"type": "PER", "mentions": [{"start": 0, "end": 12}]}, ...]
-prediction.problems   # mentions that could not be grounded, with the reason
+prediction.unresolved # mentions that could not be grounded
 ```
 
 `EntityAnnotator(types=["PER", "LOC"])` narrows a run to a subset of the registered types.
@@ -38,48 +38,47 @@ entities_to_json(resolution.entities)
 
 ## Entity types and their guidelines
 
-Everything the prompt says lives in two files under `ner_annotator_llm/guidelines/`, and both are
-meant to be edited:
+Everything the prompt says lives under `ner_annotator_llm/guidelines/` as markdown, and it is meant
+to be edited:
 
 | file | what it holds |
 | --- | --- |
 | `general.md` | how to *report* annotations: the entity list, then the sentences, quoting, fragments, flags |
-| `entities.json` | one entry per entity type — its one-line `description` and its full `guidelines` |
+| `entities/PER.md`, `entities/LOC.md`, … | one file per entity type, named after it |
 
-```json
-{
-  "PER":       {"description": "An individual human being, real or fictional.",
-                "guidelines": ["What counts as a PER entity", "- One entity per *person* ..."]},
-  "JOB_TITLE": {"description": "A role, post or professional position someone can hold.",
-                "guidelines": "..."}
-}
+An entity file starts with a `# TYPE — one-line description` heading and continues with that
+type's rules:
+
+```markdown
+# PER — An individual human being, real or fictional.
+
+## What counts as a PER entity
+- One entity per *person*, not per name: every way the text refers to that same person ...
 ```
 
-`guidelines` is a string, or a list of lines joined with newlines — easier to edit inside JSON.
-Keys starting with `$` are comments.
-
-That file is the **single source of truth for the type set**. Adding a key to it:
+`entities/` is the **single source of truth for the type set**. Dropping a file into it:
 
 - adds a member to the `EntityType` enum, which is the type of `EntityCandidate.type`, so the
   model is offered a closed list and a predicted type is validated rather than trusted;
-- adds `KEY — description` to the index at the top of the prompt, and a `# KEY — description`
-  section with the full rules below it;
+- adds `TYPE — description` to the index at the top of the instructions, and the file itself
+  below it;
 - makes that type valid in the output.
 
 No code changes, and no second pass over the document — the model classifies each entity it finds
-into one of the keys. Ships with `PER`, `JOB_TITLE`, `LOC`, `ORG` and `TIME`.
+into one of the types. Ships with `PER`, `JOB_TITLE`, `LOC`, `ORG` and `TIME`.
+
+The guidelines are the signature's **instructions**, not input fields — the document is the only
+thing that varies per call:
 
 ```python
-from ner_annotator_llm import ENTITY_GUIDELINES, EntityType, entity_guidelines_block
+from ner_annotator_llm import annotate_signature
 
-EntityType.PER.value            # "PER"
-ENTITY_GUIDELINES["PER"].description
-entity_guidelines_block()       # exactly what the prompt receives
+annotate_signature().instructions        # task text + general.md + every entity file
+annotate_signature(["PER"])              # narrowed to one type
 ```
 
-The two blocks are **input fields** of the signature, not part of the task text, so wording can be
-tuned — or optimised by DSPy — without touching the task. `EntityAnnotator(general_guidelines=...,
-entity_guidelines=...)` overrides them outright.
+`EntityAnnotator(instructions=...)` replaces the text outright, e.g. to plug in an optimised
+prompt.
 
 ## What the model returns
 
@@ -113,11 +112,9 @@ The sentence still does the disambiguating work — it says *which* occurrence o
 when the document has five. Repeated wording is not deduplicated: three references means three
 entries, matched left to right.
 
-The price is referential integrity: a mention's `entity` has to name a roster entry. Names are
-resolved leniently — different case or punctuation, and an unambiguous short form ("Obama" for
-"Barack Obama") — but never invented; a name matching nothing, or matching two entries equally
-well, is reported and the mention dropped, because without a roster entry there is no type to give
-it.
+The price is referential integrity: a mention's `entity` has to name a roster entry. The name is
+matched exactly, else against the closest one, so a near miss still lands — but a name matching
+nothing drops the mention, since without a roster entry there is no type to give it.
 
 A **non-continuous** mention is written as its fragments joined by `[…]`: in *"Annie and George
 Washington visited Mount Vernon"*, the wife is `"Annie[…]Washington"`, one mention split by the
@@ -138,28 +135,24 @@ when true. `Entity`, `Mention` and `Fragment` are plain dataclasses; `entities_t
 
 ## How grounding works
 
-`resolve_entities` locates each quoted sentence in the document **once**, then places every mention
-of that sentence inside the window, in order, with backtracking across fragments, and files each
-one under the entity it names. Matching runs over a normalised copy of the text (whitespace
-collapsed, case folded, curly quotes and dashes flattened, bidi and zero-width marks dropped) with
-a per-character index map back to the original, so a model that reflows a line break or straightens
-a quote still lands on the right characters.
+The whole of it is one idea applied twice: **look for the exact text, and fall back to a fuzzy
+match when it is not there.**
 
-- Mentions come back grouped per entity in roster order, each entity's mentions in document order.
-- Repeated surface forms are handed out in reading order, so "Obama … Obama" in one sentence gets
-  two spans rather than one span twice.
-- Nested mentions still resolve — "America" inside "Bank of America" is fine, and the two are
-  separate entities in the same sentence entry.
-- When a sentence occurs verbatim more than once, the occurrence accounting for most of its
-  mentions wins, and ties go to the one not already spoken for.
-- A sentence that cannot be found falls back to a fuzzy window, then to the whole document; a
-  single mention quoted under the wrong sentence is retried document-wide on its own, so it cannot
-  drag the rest of its sentence along.
-- **Nothing is invented.** A mention that does not match is dropped, an entity left with no
-  mentions is pruned, an answer that does not even parse is reported instead of raising, and every
-  deviation lands in `Resolution.problems` with a reason and a `dropped` flag:
-  `sentence-not-found`, `mention-outside-sentence`, `mention-not-found`, `empty-mention`,
-  `duplicate-mention`, `unknown-entity`, `duplicate-name`, `unused-entity`, `invalid-candidate`.
+`resolve_entities` locates each quoted sentence in the document — exactly, else fuzzily — which
+gives a window. Each mention's fragments are then located inside that window the same way, left to
+right from where the previous mention started, so "Obama … Obama" in one sentence gets two spans
+rather than one span twice, while a nested mention ("Obama" inside "Barack Obama") still lands
+where it belongs. The mention is filed under the entity it names, matched against the roster
+exactly, else by closest name.
+
+Exact matching prefers whole words, which matters more than it looks: mentions are often pronouns,
+and a plain substring search puts "he" inside "The". Fuzzy matching anchors on a substantial shared
+run and spans from the first matching block to the last, so a mention retyped with different
+spacing or punctuation still covers the right characters — and an answer the document simply does
+not contain is refused rather than placed somewhere plausible.
+
+**Nothing is invented.** A mention that cannot be placed, or that names no known entity, is dropped
+and listed in `Resolution.unresolved`; an entity nobody mentioned is dropped too.
 
 ## From annotated data: round-trip and few-shot demos
 
@@ -179,8 +172,8 @@ Each entity is named after its longest mention (repeats get a numeric suffix, so
 unique); every mention of every entity is filed into the sentence it falls in (`sentence_spans` does the segmentation — a small heuristic, since it only
 decides how much context a demo quotes), split mentions are rejoined with `[…]`, and the flags
 carry over. A mention straddling a sentence boundary keeps both halves,
-so the quoted sentence always contains its mentions. An entity whose type is not in the registry
-cannot be expressed and raises, unless `skip_unknown_types=True`.
+so the quoted sentence always contains its mentions. A type with no file in `entities/` cannot be
+expressed and raises.
 
 Feeding the result back through `resolve_entities` must return the original offsets — the
 round-trip tests assert exactly that over fragmented, nested, repeated, emoji and RTL documents.
@@ -195,10 +188,9 @@ annotator = EntityAnnotator(demos=examples_from_jsonl("gold.jsonl")[:3])
 
 `examples_from_jsonl` takes any `.jsonl` whose records have `text` and `entities` — the annotator's
 own output files work as they are; other keys are ignored and unannotated records are skipped.
-`to_example(text, entities)` builds one demo, and `annotator.set_demos(...)` swaps them later.
-Demos leave the guidelines out by default (they are already in the prompt in full, and repeating
-them per demo would cost more than the demo itself); `include_guidelines=True` and `reasoning=...`
-fill in the rest when you want a complete example.
+`to_example(text, entities)` builds one demo, and `annotator.set_demos(...)` swaps them later. A
+demo is just a document and its answer — the guidelines are in the instructions, so they cost
+nothing per demo. Pass `reasoning=...` to demonstrate the chain of thought too.
 
 ## Tests
 

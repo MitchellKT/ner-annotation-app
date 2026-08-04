@@ -22,13 +22,6 @@ dev = [
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
-[tool.hatch.build]
-# The surrounding repo ignores *.json (it is annotation data there), and
-# hatchling skips VCS-ignored files by default — this ships the entity registry
-# anyway. Without it the package installs without its guidelines and fails on
-# import.
-artifacts = ["ner_annotator_llm/guidelines/entities.json"]
-
 [tool.hatch.build.targets.wheel]
 packages = ["ner_annotator_llm"]
 

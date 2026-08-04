@@ -35,9 +35,6 @@ dist/
 !frontend/package-lock.json
 !frontend/tsconfig.json
 
-# The LLM annotator's entity registry — source, not annotation data.
-!ner-annotator-llm/ner_annotator_llm/guidelines/entities.json
-
 # ───────────────────────── Editor / OS ──────────────────────────────
 .DS_Store
 Thumbs.db
