@@ -1,0 +1,29 @@
+[project]
+name = "ner-annotator-llm"
+version = "0.1.0"
+description = "DSPy signature for LLM entity annotation, grounded to character offsets"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.6",
+]
+
+[project.optional-dependencies]
+# Only needed for ner_annotator_llm.signatures; the grounding code runs without it.
+dspy = [
+    "dspy>=2.6",
+]
+dev = [
+    "dspy>=2.6",
+    "pytest>=8.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["ner_annotator_llm"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

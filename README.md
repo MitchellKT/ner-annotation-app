@@ -170,6 +170,47 @@ cd backend && python -m ner_annotator -i ../sample/input.jsonl -o ../sample/anno
 cd frontend && npm run dev      # http://localhost:5173
 ```
 
+## LLM-generated predictions
+
+`ner-annotator-llm/` is a **separate, installable package** (`pip install ./ner-annotator-llm[dspy]`)
+that produces a prediction to refine: a DSPy signature that annotates a document with an LLM, plus
+the code that grounds its answer into the `.jsonl` schema above. It depends on nothing in this app,
+so it can also be published or vendored on its own.
+
+```python
+import dspy
+from ner_annotator_llm import EntityAnnotator
+
+dspy.configure(lm=dspy.LM("anthropic/claude-sonnet-5"))
+prediction = EntityAnnotator()(document=text)
+prediction.entities   # [{"type": "PER", "mentions": [{"start": 0, "end": 12}]}, ...] — on schema
+prediction.unresolved # mentions that could not be grounded
+```
+
+An LLM cannot count characters, so it is never asked for offsets. It answers in two parts: a
+**roster** of the distinct entities, each under a unique name, then the **sentences** —
+each quoted once for the whole document, carrying every mention in it tagged with its entity's name,
+with non-continuous mentions written as `"Annie[…]Washington"`. Quoting a sentence once instead of
+once per entity roughly halves the answer on entity-dense text. Grounding maps it back to
+code-point offsets and drops — never invents — whatever fails to match. Write the entities into a
+`.jsonl` alongside `doc_id` / `text` and open it with `--input` to refine.
+
+One pass annotates every entity type. The guidelines are the signature's *instructions* and live as
+markdown in `ner-annotator-llm/ner_annotator_llm/guidelines/` — `general.md` for how to report
+annotations, and one file per type in `entities/` (`PER.md`, `JOB_TITLE.md`, `LOC.md`, `ORG.md`,
+`TIME.md`). Dropping a file into `entities/` adds that type to the enum the model must choose from
+and to the prompt; no code change. Note that these are the *annotator's* types — the app's
+`--types` is set separately, so keep the two in step.
+
+The conversion also runs backwards: `to_annotation` turns an annotated document (this `.jsonl`
+schema) into the model's format, which both round-trip-tests the grounding and turns a corpus you
+have already annotated into **few-shot demos** —
+`EntityAnnotator(demos=examples_from_jsonl("gold.jsonl")[:3])`. The annotator's own output files
+can be passed in directly.
+
+See [`ner-annotator-llm/README.md`](ner-annotator-llm/README.md) for the output format, the
+matching rules, and how to write guidelines.
+
 ## Keyboard shortcuts
 
 There is **one digit key per configured `--types` entry** (the first nine, `1`–`9`); the toolbar
@@ -289,6 +330,7 @@ text it alone covers. `Esc`, an outside click, or scrolling dismisses it.
 ```bash
 cd backend && uv run pytest            # store load / merge / save round-trip, unicode, validation
 cd frontend && npm test                # segment tiling + offset/selection logic
+cd ner-annotator-llm && uv run pytest  # grounding quoted LLM output to character offsets
 ```
 
 ## Project layout
@@ -297,6 +339,8 @@ cd frontend && npm test                # segment tiling + offset/selection logic
 backend/ner_annotator/   models.py · store.py · workspace.py            (per-user file I/O)
                          mongo.py                                       (optional MongoDB mirror)
                          main.py · __main__.py                          (FastAPI app + CLI)
+ner-annotator-llm/       signatures.py · grounding.py · examples.py     (standalone package:
+                         guidelines/general.md · guidelines/entities/     LLM predictions)
 frontend/src/            lib/segments.ts · lib/offsets.ts               (rendering & selection core)
                          store.ts · api.ts · components/ · hooks/       (UI, incl. login + source select)
 sample/input.jsonl       example docs: metadata, predictions, from-scratch, nested, unicode
