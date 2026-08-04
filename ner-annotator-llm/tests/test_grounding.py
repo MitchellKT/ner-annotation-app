@@ -67,9 +67,7 @@ def spans(resolution):
     [
         ("Barack Obama", ["Barack Obama"]),
         ("Annie[…]Washington", ["Annie", "Washington"]),
-        ("Annie[...]Washington", ["Annie", "Washington"]),
-        ("Annie [ ... ] Washington", ["Annie", "Washington"]),
-        ("Annie … Washington", ["Annie", "Washington"]),
+        ("Annie […] Washington", ["Annie", "Washington"]),
         ("a[…]b[…]c", ["a", "b", "c"]),
         ("[…]Washington", ["Washington"]),
         ("   ", []),

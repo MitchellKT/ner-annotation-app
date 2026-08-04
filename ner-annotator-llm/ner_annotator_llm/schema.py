@@ -38,22 +38,15 @@ George Washington visited Mount Vernon."*.
 
 from __future__ import annotations
 
-import re
 from typing import List
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from .guidelines import EntityType
 
-# What the model is told to put between the fragments of a non-continuous
-# mention. The parser below is deliberately more permissive than this.
+# What goes between the fragments of a non-continuous mention, in the prompt and
+# in the answer.
 FRAGMENT_SEPARATOR = "[…]"
-
-# "[…]", "[...]", "[ .. ]" — the bracketed form the prompt asks for.
-_BRACKETED_SEPARATOR_RE = re.compile(r"\s*\[\s*(?:…|\.\s*\.\s*\.?\s*)\]\s*")
-# "Annie … Washington" — the same intent without the brackets, accepted as a
-# fallback so a slightly off-format answer is still usable.
-_BARE_SEPARATOR_RE = re.compile(r"\s*(?:…|\.{3,})\s*")
 
 
 def split_fragments(mention: str) -> List[str]:
@@ -61,12 +54,9 @@ def split_fragments(mention: str) -> List[str]:
 
     ``"Annie[…]Washington"`` -> ``["Annie", "Washington"]``; a continuous
     mention yields a single-item list. Blank pieces are dropped, so a stray
-    leading/trailing separator is harmless.
+    leading or trailing separator is harmless.
     """
-    parts = _BRACKETED_SEPARATOR_RE.split(mention)
-    if len(parts) == 1:
-        parts = _BARE_SEPARATOR_RE.split(mention)
-    return [p.strip() for p in parts if p.strip()]
+    return [part.strip() for part in mention.split(FRAGMENT_SEPARATOR) if part.strip()]
 
 
 def _stripped(value: object) -> str:
