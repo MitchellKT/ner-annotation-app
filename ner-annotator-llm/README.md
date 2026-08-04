@@ -169,11 +169,14 @@ to_annotation(text, [{"type": "PER", "mentions": [{"start": 0, "end": 5}]}])
 ```
 
 Each entity is named after its longest mention (repeats get a numeric suffix, so names stay
-unique); every mention of every entity is filed into the sentence it falls in (`sentence_spans` does the segmentation — a small heuristic, since it only
-decides how much context a demo quotes), split mentions are rejoined with `[…]`, and the flags
-carry over. A mention straddling a sentence boundary keeps both halves,
-so the quoted sentence always contains its mentions. A type with no file in `entities/` cannot be
+unique); every mention of every entity is filed into the sentence it falls in, split mentions are
+rejoined with `[…]`, and the flags carry over. A type with no file in `entities/` cannot be
 expressed and raises.
+
+`sentence_spans` does the splitting: terminator punctuation followed by whitespace, or a line
+break, and nothing more — no abbreviation list, so "Dr. Smith" splits early. It only decides how
+much context a demo quotes, and a mention straddling a split keeps every sentence it touches, so
+the quoted text always contains its mentions.
 
 Feeding the result back through `resolve_entities` must return the original offsets — the
 round-trip tests assert exactly that over fragmented, nested, repeated, emoji and RTL documents.

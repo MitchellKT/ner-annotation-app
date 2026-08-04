@@ -26,6 +26,7 @@ conversion itself stays usable without it.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple, Union
 
@@ -40,91 +41,31 @@ from .schema import (
 
 Span = Tuple[int, int]
 
-# Sentence-final punctuation, plus any closing quote/bracket that trails it.
-_TERMINATORS = ".!?…׃؟۔。"
-_CLOSERS = "\"'”’)]»›"
-
-# Words whose trailing dot does not end a sentence. Kept small on purpose: a
-# missed abbreviation only makes a quoted sentence shorter, and a mention that
-# straddles the split keeps both halves (see _covering_span).
-_ABBREVIATIONS = frozenset(
-    """mr mrs ms dr prof st jr sr inc ltd co corp vs etc al fig no approx
-    e.g i.e u.s u.k""".split()
-)
+# A sentence ends at terminator punctuation followed by whitespace, or at a line
+# break. That is the whole rule: no abbreviation list, no quote handling, so
+# "Dr. Smith" and '"Stop." she said.' split early. It only decides how much
+# context a demo quotes, and a mention that straddles a split keeps every
+# sentence it touches (see _covering_span).
+_BOUNDARY = re.compile(r"(?<=[.!?])\s+|\n+")
 
 
 def sentence_spans(text: str) -> List[Span]:
     """Split ``text`` into sentence spans, ``[start, end)`` over code points.
 
-    A deliberately small heuristic — terminator punctuation followed by
-    whitespace, or a line break — because it only decides *how much context* a
-    demo quotes. Whitespace is trimmed off each span, so ``text[start:end]`` is
-    the sentence as it would be quoted.
+    Whitespace is trimmed off each span, so ``text[start:end]`` is the sentence
+    as it would be quoted.
     """
     spans: List[Span] = []
     start = 0
-    index = 0
-    length = len(text)
-    while index < length:
-        char = text[index]
-        if char == "\n":
-            end = index
-            while index < length and text[index].isspace():
-                index += 1
-        elif char in _TERMINATORS:
-            stop = index + 1
-            while stop < length and text[stop] in _TERMINATORS:
-                stop += 1
-            while stop < length and text[stop] in _CLOSERS:
-                stop += 1
-            if stop < length and not text[stop].isspace():
-                index = stop
-                continue
-            if char == "." and _is_abbreviation(text, index):
-                index = stop
-                continue
-            if _continues_lowercase(text, stop):
-                index = stop
-                continue
-            end = stop
-            index = stop
-            while index < length and text[index].isspace():
-                index += 1
-        else:
-            index += 1
-            continue
-        span = _trim(text, start, end)
+    for boundary in _BOUNDARY.finditer(text):
+        span = _trim(text, start, boundary.start())
         if span is not None:
             spans.append(span)
-        start = index
-    span = _trim(text, start, length)
+        start = boundary.end()
+    span = _trim(text, start, len(text))
     if span is not None:
         spans.append(span)
     return spans
-
-
-def _is_abbreviation(text: str, dot: int) -> bool:
-    word = ""
-    cursor = dot - 1
-    while cursor >= 0 and not text[cursor].isspace():
-        word = text[cursor] + word
-        cursor -= 1
-    word = word.strip("(\"'“‘").lower().rstrip(".")
-    # A lone initial ("J. Smith") is never a sentence end either.
-    return word in _ABBREVIATIONS or len(word) == 1
-
-
-def _continues_lowercase(text: str, stop: int) -> bool:
-    """True when what follows reads as a continuation, not a new sentence.
-
-    A lowercase word after the punctuation means the "sentence end" was really
-    an abbreviation or a quoted fragment (``"Stop." she said.``). Scripts
-    without case — Hebrew, Arabic, CJK — are unaffected, since ``islower`` is
-    False for their letters.
-    """
-    while stop < len(text) and text[stop].isspace():
-        stop += 1
-    return stop < len(text) and text[stop].islower()
 
 
 def _trim(text: str, start: int, end: int) -> Optional[Span]:
