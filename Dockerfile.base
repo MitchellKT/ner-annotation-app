@@ -1,13 +1,25 @@
 # syntax=docker/dockerfile:1
 #
 # Base image: all third-party dependencies (Python + Node toolchain and
-# packages), but none of the app's own source. Build it where the internet is
-# reachable, push it to the on-prem registry, and rebuild only when
+# packages), but none of the app's own source. Rebuild it only when
 # dependencies change (backend/pyproject.toml, frontend/package.json or
 # frontend/package-lock.json).
 #
-#   docker build -f Dockerfile.base -t <registry>/ner-annotator-base:<tag> .
-#   docker push <registry>/ner-annotator-base:<tag>
+# 1) Locally (with internet access): build the image and export it to a tar.
+#
+#   docker build -f Dockerfile.base -t ner-annotator-base:<tag> .
+#   docker save ner-annotator-base:<tag> | gzip > ner-annotator-base_<tag>.tar.gz
+#
+# 2) On-prem: copy the tar over, load it, tag it for the on-prem Artifactory
+#    and push it.
+#
+#   docker load -i ner-annotator-base_<tag>.tar.gz
+#   docker tag ner-annotator-base:<tag> <artifactory>/ner-annotator-base:<tag>
+#   docker push <artifactory>/ner-annotator-base:<tag>
+#
+# Then build the app image on-prem from it (see Dockerfile):
+#
+#   docker build --build-arg BASE_IMAGE=<artifactory>/ner-annotator-base:<tag> -t ner-annotator .
 
 # ── Node toolchain + frontend packages ────────────────────────────
 FROM node:20-slim AS node

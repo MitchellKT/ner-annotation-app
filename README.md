@@ -175,17 +175,21 @@ cd frontend && npm run dev      # http://localhost:5173
 The image is split in two so the app can be built in an on-prem / air-gapped environment:
 
 - **`Dockerfile.base`** holds every third-party dependency: Python packages (incl. the `mongo` and
-  `dev` extras), Node + npm, and the frontend `node_modules`. Build it once where the internet is
-  reachable and push it to the on-prem registry. Rebuild it only when `backend/pyproject.toml`,
+  `dev` extras), Node + npm, and the frontend `node_modules`. Build it locally (with internet access),
+  export it to a tar, then load it on-prem and push it to the on-prem Artifactory. Rebuild it only when `backend/pyproject.toml`,
   `frontend/package.json` or `frontend/package-lock.json` change.
 - **`Dockerfile`** starts `FROM` that base image, copies the repo and builds the frontend; the
   backend runs from source via `PYTHONPATH`. It needs **no network access**, so it is the one built on-prem.
 
 ```bash
-REG=artifactory.example.com/docker-local          # your on-prem registry / repo
+# 1) locally, with internet access — once (or whenever dependencies change)
+docker build -f Dockerfile.base -t ner-annotator-base:1 .
+docker save ner-annotator-base:1 | gzip > ner-annotator-base_1.tar.gz
 
-# once (or whenever dependencies change), on a machine with internet access
-docker build -f Dockerfile.base -t $REG/ner-annotator-base:1 .
+# 2) on-prem — load the tar and push it to Artifactory
+REG=artifactory.example.com/docker-local          # your on-prem registry / repo
+docker load -i ner-annotator-base_1.tar.gz
+docker tag ner-annotator-base:1 $REG/ner-annotator-base:1
 docker push $REG/ner-annotator-base:1
 
 # on-prem, every time the code changes — offline
