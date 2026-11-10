@@ -32,12 +32,11 @@ RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
 COPY --from=node /app/frontend/node_modules /app/frontend/node_modules
 
 # Python dependencies: install the backend with all extras to pull in its
-# dependency tree, then remove the package itself so only deps remain.
-# hatchling/editables are kept so the app image can install the backend
-# with --no-build-isolation (no network needed).
+# dependency tree, then remove the package itself so only deps remain
+# (the app image runs the backend from source via PYTHONPATH).
 WORKDIR /app
 COPY backend/pyproject.toml ./backend/
 RUN mkdir -p backend/ner_annotator && touch backend/ner_annotator/__init__.py \
- && pip install --no-cache-dir hatchling editables "./backend[mongo,dev]" \
+ && pip install --no-cache-dir "./backend[mongo,dev]" \
  && pip uninstall -y ner-annotator \
  && rm -rf backend

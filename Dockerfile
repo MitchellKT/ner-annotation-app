@@ -12,8 +12,8 @@ FROM ${BASE_IMAGE}
 WORKDIR /app
 COPY . .
 
-# Backend: editable install against the deps already in the base image.
-RUN pip install --no-cache-dir --no-deps --no-build-isolation --no-index -e ./backend
+# Backend: run straight from source; its dependencies are in the base image.
+ENV PYTHONPATH=/app/backend
 
 # Frontend: node_modules come from the base image.
 RUN cd frontend && npm run build

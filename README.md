@@ -178,8 +178,8 @@ The image is split in two so the app can be built in an on-prem / air-gapped env
   `dev` extras), Node + npm, and the frontend `node_modules`. Build it once where the internet is
   reachable and push it to the on-prem registry. Rebuild it only when `backend/pyproject.toml`,
   `frontend/package.json` or `frontend/package-lock.json` change.
-- **`Dockerfile`** starts `FROM` that base image, copies the repo, installs the backend (editable)
-  and builds the frontend. It needs **no network access**, so it is the one built on-prem.
+- **`Dockerfile`** starts `FROM` that base image, copies the repo and builds the frontend; the
+  backend runs from source via `PYTHONPATH`. It needs **no network access**, so it is the one built on-prem.
 
 ```bash
 REG=artifactory.example.com/docker-local          # your on-prem registry / repo
