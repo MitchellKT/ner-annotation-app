@@ -182,8 +182,14 @@ class Entity(BaseModel):
     def _normalize_uid(cls, value: Any) -> Any:
         if value is None:
             return None
-        value = str(value).strip()
-        return value or None
+        # Several linked ids are stored comma-separated ("Q1,Q2"); normalize
+        # spacing, drop blanks and duplicates, keep order (matches the frontend).
+        ids: List[str] = []
+        for part in str(value).split(","):
+            part = part.strip()
+            if part and part not in ids:
+                ids.append(part)
+        return ",".join(ids) or None
 
 
 class Comment(BaseModel):
@@ -247,5 +253,11 @@ class Doc(BaseModel):
     def _normalize_meta(cls, value: Any) -> Any:
         if value is None:
             return None
-        value = str(value).strip()
-        return value or None
+        # Several linked ids are stored comma-separated ("Q1,Q2"); normalize
+        # spacing, drop blanks and duplicates, keep order (matches the frontend).
+        ids: List[str] = []
+        for part in str(value).split(","):
+            part = part.strip()
+            if part and part not in ids:
+                ids.append(part)
+        return ",".join(ids) or None

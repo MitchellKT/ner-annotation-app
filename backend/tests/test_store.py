@@ -600,3 +600,12 @@ def test_implicit_defaults_false_and_is_omitted():
     assert m.implicit is False
     m2 = Mention.model_validate({"fragments": [{"start": 0, "end": 5}]})
     assert m2.implicit is False
+
+
+def test_entity_uid_multiple_ids_normalized():
+    from ner_annotator.models import Entity
+
+    e = Entity(type="PER", mentions=[{"start": 0, "end": 1}], uid=" Q1 , Q2,,Q1 ")
+    assert e.uid == "Q1,Q2"
+    assert Entity(type="PER", mentions=[], uid=" , ").uid is None
+    assert Entity(type="PER", mentions=[], uid="Q76").uid == "Q76"

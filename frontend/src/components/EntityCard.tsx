@@ -4,6 +4,7 @@ import { colorForIndex, colorForType } from "../colors";
 import type { Entity } from "../types";
 import { MentionChip } from "./MentionChip";
 import { fragmentsKey } from "../lib/mentions";
+import { parseLinkedIds } from "../lib/linkedIds";
 
 interface Props {
   entity: Entity;
@@ -26,6 +27,9 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
   const splitMention = useStore((s) => s.splitMention);
   const setDraggingMention = useStore((s) => s.setDraggingMention);
   const openUidPrompt = useStore((s) => s.openUidPrompt);
+  const infoOpen = useStore((s) => s.infoCardEntityId === entity.id);
+  const openInfoCard = useStore((s) => s.openInfoCard);
+  const closeInfoCard = useStore((s) => s.closeInfoCard);
   const openTagPrompt = useStore((s) => s.openTagPrompt);
   const removeEntityTag = useStore((s) => s.removeEntityTag);
   const setHoverEntity = useStore((s) => s.setHoverEntity);
@@ -43,6 +47,7 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
   const isMergeSource = pendingMergeId === entity.id;
   const isMergeTarget = pendingMergeId !== null && pendingMergeId !== entity.id;
 
+  const linkedIds = parseLinkedIds(entity.uid);
   const typeOptions = types.includes(entity.type) ? types : [entity.type, ...types];
 
   // Keep the active card visible when cycling with Tab in a long list.
@@ -133,27 +138,40 @@ export function EntityCard({ entity, index, predictionSpans }: Props) {
             </option>
           ))}
         </select>
-        {entity.uid && (
+        {linkedIds.length > 0 && (
           <span
-            className="uid-badge"
-            title={`unique id: ${entity.uid} — click to edit`}
+            className={"uid-badge" + (infoOpen ? " open" : "")}
+            data-linked-anchor={entity.id}
+            title={
+              linkedIds.length > 1
+                ? `linked ids: ${linkedIds.join(", ")} — click to view ${linkedIds[0]}`
+                : `linked id: ${linkedIds[0]} — click to view entity card`
+            }
             onClick={(e) => {
               e.stopPropagation();
-              openUidPrompt(entity.id);
+              if (infoOpen) closeInfoCard();
+              else openInfoCard(entity.id);
             }}
           >
-            {entity.uid}
+            {linkedIds[0]}
+          </span>
+        )}
+        {linkedIds.length > 1 && (
+          <span className="uid-more" title={`also linked: ${linkedIds.slice(1).join(", ")}`}>
+            +{linkedIds.length - 1}
           </span>
         )}
         <span className="ncount" style={{ fontSize: 11, color: "var(--muted)" }}>
           {entity.mentions.length}×
         </span>
         <div className="ecard-actions" onClick={(e) => e.stopPropagation()}>
-          {!entity.uid && (
-            <button className="icon-btn" title="set unique identifier" onClick={() => openUidPrompt(entity.id)}>
-              id
-            </button>
-          )}
+          <button
+            className="icon-btn"
+            title={entity.uid ? "edit linked ids" : "set linked id(s)"}
+            onClick={() => openUidPrompt(entity.id)}
+          >
+            {entity.uid ? "✎" : "id"}
+          </button>
           <button
             className={"icon-btn" + (entity.tags.length ? " on-tag" : "")}
             title={
