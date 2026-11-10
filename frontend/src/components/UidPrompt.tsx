@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useStore } from "../store";
 import { cpSlice } from "../lib/offsets";
 import { colorForType } from "../colors";
+import { formatLinkedIds } from "../lib/linkedIds";
 
 /**
  * Small dialog shown right after an entity is created (and from the ✎ id
@@ -15,7 +16,7 @@ export function UidPrompt() {
   const setEntityUid = useStore((s) => s.setEntityUid);
   const closeUidPrompt = useStore((s) => s.closeUidPrompt);
 
-  const [value, setValue] = useState(entity?.uid ?? "");
+  const [value, setValue] = useState(formatLinkedIds(entity?.uid));
 
   // Close if the entity vanished (deleted / undo) while the prompt was open.
   useEffect(() => {
@@ -48,14 +49,14 @@ export function UidPrompt() {
           )}
         </div>
         <label className="uid-label" htmlFor="uid-input">
-          Unique identifier <span style={{ color: "var(--muted)" }}>(optional)</span>
+          Linked id(s) <span style={{ color: "var(--muted)" }}>(optional, comma-separated — the first is shown)</span>
         </label>
         <input
           id="uid-input"
           className="uid-input"
           autoFocus
           value={value}
-          placeholder="e.g. Q76, kb:obama-1 — Enter to save, Esc to skip"
+          placeholder="e.g. Q76 or Q76, Q42 — Enter to save, Esc to skip"
           onChange={(e) => setValue(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {

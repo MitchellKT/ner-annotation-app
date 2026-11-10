@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { normalizeLinkedIds } from "./lib/linkedIds";
 import { api, beaconSave } from "./api";
 import type {
   AppConfig,
@@ -131,6 +132,7 @@ interface State {
   pendingMergeId: string | null; // first entity chosen for a merge
   draggingMention: { mentionId: string; fromId: string } | null; // mention chip currently being dragged
   uidPromptEntityId: string | null; // entity whose unique-id prompt is open
+  infoCardEntityId: string | null; // entity whose linked-entity info popover is open
   tagPromptEntityId: string | null; // entity whose tag picker is open
   // A clicked mention's floating action bar: which mention, and the segment
   // start it was anchored to (so the popover can position itself in the text).
@@ -169,6 +171,8 @@ interface State {
   cancelMerge: () => void;
   openUidPrompt: (entityId: string) => void;
   closeUidPrompt: () => void;
+  openInfoCard: (entityId: string) => void;
+  closeInfoCard: () => void;
   openTagPrompt: (entityId: string) => void;
   closeTagPrompt: () => void;
   openMentionMenu: (payload: { entityId: string; mentionId: string; anchorStart: number }) => void;
@@ -310,6 +314,7 @@ export const useStore = create<State>((set, get) => {
     pendingMergeId: null,
     draggingMention: null,
     uidPromptEntityId: null,
+    infoCardEntityId: null,
     tagPromptEntityId: null,
     mentionMenu: null,
     selectionSpan: null,
@@ -410,6 +415,7 @@ export const useStore = create<State>((set, get) => {
           pendingMergeId: null,
           draggingMention: null,
           uidPromptEntityId: null,
+          infoCardEntityId: null,
           tagPromptEntityId: null,
           mentionMenu: null,
           selectionSpan: null,
@@ -462,8 +468,11 @@ export const useStore = create<State>((set, get) => {
     },
     beginMerge: (id) => set({ pendingMergeId: id }),
     cancelMerge: () => set({ pendingMergeId: null }),
-    openUidPrompt: (entityId) => set({ uidPromptEntityId: entityId }),
+    openUidPrompt: (entityId) => set({ uidPromptEntityId: entityId, infoCardEntityId: null }),
     closeUidPrompt: () => set({ uidPromptEntityId: null }),
+    // Opening the id prompt and the info popover are mutually exclusive.
+    openInfoCard: (entityId) => set({ infoCardEntityId: entityId, uidPromptEntityId: null }),
+    closeInfoCard: () => set({ infoCardEntityId: null }),
 
     openTagPrompt(entityId) {
       set({ tagPromptEntityId: entityId });
@@ -681,7 +690,8 @@ export const useStore = create<State>((set, get) => {
     },
 
     setEntityUid(entityId, entityUid) {
-      const trimmed = entityUid?.trim() || undefined;
+      // Several linked ids are kept comma-separated ("Q1,Q2"); see lib/linkedIds.
+      const trimmed = normalizeLinkedIds(entityUid);
       mutate((entities) =>
         entities.map((e) => (e.id === entityId ? { ...e, uid: trimmed, reviewed: true } : e))
       );

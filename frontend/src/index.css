@@ -257,7 +257,31 @@ kbd {
   background: #eef2f7; border: 1px solid var(--border-strong); color: var(--text);
   max-width: 110px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.uid-badge:hover { border-color: var(--accent); }
+.uid-badge:hover, .uid-badge.open { border-color: var(--accent); }
+.uid-badge.open { background: var(--accent-soft); }
+.uid-more { font-size: 11px; color: var(--accent); background: var(--accent-soft); padding: 1px 5px; border-radius: 5px; }
+
+/* ---- linked-entity info popover (anchored to the id badge) ---- */
+.info-pop {
+  position: fixed; z-index: 60; width: 340px; max-width: calc(100vw - 16px); max-height: 70vh; overflow-y: auto;
+  background: var(--panel); border: 1px solid var(--border-strong); border-radius: 12px;
+  box-shadow: 0 12px 32px rgba(16,24,40,0.18); padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;
+}
+.info-head { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.info-img { width: 56px; height: 56px; border-radius: 8px; object-fit: cover; flex: none; background: #eef2f7; }
+.info-titles { flex: 1; min-width: 0; }
+.info-title { font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+.info-id { font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace; font-size: 11px; color: var(--muted); text-align: right; margin-top: 2px; }
+.info-close { flex: none; align-self: flex-start; padding: 0 7px; font-size: 15px; line-height: 1.4; }
+.info-msg { font-size: 12px; color: var(--muted); }
+.info-err { color: var(--danger); }
+.info-attrs { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 13px; }
+.info-row { display: contents; }
+.info-attrs dt { color: var(--muted); white-space: nowrap; }
+.info-attrs dd { margin: 0; overflow-wrap: anywhere; }
+.info-foot { border-top: 1px solid var(--border); padding-top: 8px; font-size: 13px; }
+.info-foot a { color: var(--accent); text-decoration: none; }
+.info-foot a:hover { text-decoration: underline; }
 
 /* ---- entity tags ---- */
 .tag-list { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }

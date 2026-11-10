@@ -34,6 +34,8 @@ Input and output are the same `.jsonl` schema, one record per line:
 - An entity may carry an optional **`"uid"`** — a free-form unique identifier (e.g. a Wikidata QID
   or knowledge-base key): `{"type": "PER", "uid": "Q76", "mentions": [...]}`. It is omitted from
   the output when unset, so files without ids keep the original schema.
+  An entity may be linked to **several ids**, stored comma-separated: `"uid": "Q76,Q42"`
+  (spacing is normalized, blanks and duplicates dropped). The first id is the one displayed.
 - An entity may carry **`"tags"`** — a list of free-form labels shared between annotators:
   `{"type": "PER", "mentions": [...], "tags": ["politician", "צבאי"]}`. Tags are taken verbatim
   (any script; only surrounding whitespace is trimmed) and compared exactly, so `NATO` and `nato`
@@ -363,3 +365,16 @@ frontend/src/            lib/segments.ts · lib/offsets.ts               (render
                          store.ts · api.ts · components/ · hooks/       (UI, incl. login + source select)
 sample/input.jsonl       example docs: metadata, predictions, from-scratch, nested, unicode
 ```
+
+## Linked entity card
+
+Clicking an entity's id badge opens a popover next to its card with the linked entity's
+attributes from your knowledge base (title, Hebrew attribute names and values, an optional
+image, and a link to the full entity page). With several linked ids the first is used.
+The endpoints are placeholders in [`frontend/src/entityService.ts`](frontend/src/entityService.ts):
+
+- `ENTITY_ATTRIBUTES_API` — returns `{"title": {"name": "שם", "value": "..."}, "<key>": {"name": "...", "value": "..."}, ...}`; `title` is required and becomes the card title.
+- `ENTITY_IMAGE_API` — optional (`null` = no images); responds with an image, or JSON `{"url": ...}`, or 404 when the entity has none.
+- `ENTITY_PAGE_URL` — URL template of the full entity card on the external site.
+
+Each takes `{id}`, replaced with the URL-encoded entity id.

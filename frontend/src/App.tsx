@@ -9,6 +9,7 @@ import { CommentPanel } from "./components/CommentPanel";
 import { KeyboardHelp } from "./components/KeyboardHelp";
 import { UidPrompt } from "./components/UidPrompt";
 import { TagPrompt } from "./components/TagPrompt";
+import { EntityInfoPopover } from "./components/EntityInfoPopover";
 import { LoginScreen } from "./components/LoginScreen";
 import { SourceSelector } from "./components/SourceSelector";
 import { cpSlice } from "./lib/offsets";
@@ -30,6 +31,7 @@ export default function App() {
 
   const uidPromptEntityId = useStore((s) => s.uidPromptEntityId);
   const tagPromptEntityId = useStore((s) => s.tagPromptEntityId);
+  const infoCardEntityId = useStore((s) => s.infoCardEntityId);
 
   const [showHelp, setShowHelp] = useState(false);
   useKeyboard(() => setShowHelp((v) => !v));
@@ -97,6 +99,7 @@ export default function App() {
       {/* keyed so the input state resets when the prompt targets a new entity */}
       {uidPromptEntityId && <UidPrompt key={uidPromptEntityId} />}
       {tagPromptEntityId && <TagPrompt key={tagPromptEntityId} />}
+      {infoCardEntityId && <EntityInfoPopover key={infoCardEntityId} />}
       {showHelp && <KeyboardHelp onClose={() => setShowHelp(false)} />}
     </div>
   );
