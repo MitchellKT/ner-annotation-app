@@ -118,6 +118,37 @@ python -m ner_annotator --input ../sample/input.jsonl --output ../sample/annotat
 
 Re-running with the same `--output` **resumes** the previous session (annotations + status).
 
+### Running locally without Docker (dependencies already installed)
+
+Use this when the Python packages (`fastapi`, `uvicorn`, `pydantic`, and optionally `pymongo`)
+and the frontend's `node_modules` are already installed, e.g. inside the base image or a
+pre-provisioned environment. Nothing is installed and no network access is needed. Run every
+command from the **repo root**:
+
+```bash
+# 1) build the frontend into frontend/dist (repeat after frontend changes)
+(cd frontend && npm run build)
+
+# 2) make the backend package importable straight from source (no pip install)
+export PYTHONPATH="$PWD/backend"          # Windows PowerShell: $env:PYTHONPATH = "$PWD\backend"
+
+# 3) launch: serves the built frontend from frontend/dist and opens http://127.0.0.1:8000
+python -m ner_annotator \
+  --input sample/input.jsonl \
+  --output sample/annotations.jsonl \
+  --types PER,LOC,ORG,TIME
+```
+
+Useful flags:
+
+- `--no-open` doesn't open a browser (for headless / remote machines).
+- `--host 0.0.0.0 --port 8080` listens on all interfaces or another port (default `127.0.0.1:8000`).
+- `--static path/to/dist` serves a frontend build from somewhere other than `frontend/dist`.
+- `--mongo-uri mongodb://host:27017` also mirrors annotations to MongoDB (needs `pymongo`).
+
+Stop the server with `Ctrl+C`. Re-running with the same `--output` picks up where you left off.
+For hot reload while editing the frontend, see [Development (hot reload)](#development-hot-reload).
+
 ### Configuring entity types
 
 `--types` / `-t` is **required**: pass the comma-separated label set for this run.
