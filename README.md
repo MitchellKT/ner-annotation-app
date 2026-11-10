@@ -118,6 +118,37 @@ python -m ner_annotator --input ../sample/input.jsonl --output ../sample/annotat
 
 Re-running with the same `--output` **resumes** the previous session (annotations + status).
 
+### Running locally without Docker (dependencies already installed)
+
+Use this when the Python packages (`fastapi`, `uvicorn`, `pydantic`, and optionally `pymongo`)
+and the frontend's `node_modules` are already installed, e.g. inside the base image or a
+pre-provisioned environment. Nothing is installed and no network access is needed. Run every
+command from the **repo root**:
+
+```bash
+# 1) build the frontend into frontend/dist (repeat after frontend changes)
+(cd frontend && npm run build)
+
+# 2) make the backend package importable straight from source (no pip install)
+export PYTHONPATH="$PWD/backend"          # Windows PowerShell: $env:PYTHONPATH = "$PWD\backend"
+
+# 3) launch: serves the built frontend from frontend/dist and opens http://127.0.0.1:8000
+python -m ner_annotator \
+  --input sample/input.jsonl \
+  --output sample/annotations.jsonl \
+  --types PER,LOC,ORG,TIME
+```
+
+Useful flags:
+
+- `--no-open` doesn't open a browser (for headless / remote machines).
+- `--host 0.0.0.0 --port 8080` listens on all interfaces or another port (default `127.0.0.1:8000`).
+- `--static path/to/dist` serves a frontend build from somewhere other than `frontend/dist`.
+- `--mongo-uri mongodb://host:27017` also mirrors annotations to MongoDB (needs `pymongo`).
+
+Stop the server with `Ctrl+C`. Re-running with the same `--output` picks up where you left off.
+For hot reload while editing the frontend, see [Development (hot reload)](#development-hot-reload).
+
 ### Configuring entity types
 
 `--types` / `-t` is **required**: pass the comma-separated label set for this run.
@@ -169,6 +200,37 @@ cd backend && python -m ner_annotator -i ../sample/input.jsonl -o ../sample/anno
 # terminal 2 — Vite dev server (proxies /api to :8000)
 cd frontend && npm run dev      # http://localhost:5173
 ```
+
+### Docker (base image + app image)
+
+The image is split in two so the app can be built in an on-prem / air-gapped environment:
+
+- **`Dockerfile.base`** holds every third-party dependency: Python packages (incl. the `mongo` and
+  `dev` extras), Node + npm, and the frontend `node_modules`. Build it locally (with internet access),
+  export it to a tar, then load it on-prem and push it to the on-prem Artifactory. Rebuild it only when `backend/pyproject.toml`,
+  `frontend/package.json` or `frontend/package-lock.json` change.
+- **`Dockerfile`** starts `FROM` that base image, copies the repo and builds the frontend; the
+  backend runs from source via `PYTHONPATH`. It needs **no network access**, so it is the one built on-prem.
+
+```bash
+# 1) locally, with internet access — once (or whenever dependencies change)
+docker build -f Dockerfile.base -t ner-annotator-base:1 .
+docker save ner-annotator-base:1 | gzip > ner-annotator-base_1.tar.gz
+
+# 2) on-prem — load the tar and push it to Artifactory
+REG=artifactory.example.com/docker-local          # your on-prem registry / repo
+docker load -i ner-annotator-base_1.tar.gz
+docker tag ner-annotator-base:1 $REG/ner-annotator-base:1
+docker push $REG/ner-annotator-base:1
+
+# on-prem, every time the code changes — offline
+docker build --build-arg BASE_IMAGE=$REG/ner-annotator-base:1 -t ner-annotator .
+docker run -p 8000:8000 -v "$PWD/sample:/data" ner-annotator \
+  --input /data/input.jsonl --output /data/annotations.jsonl --types PER,LOC,ORG,TIME
+```
+
+Tests and frontend builds also run offline inside the app image, e.g.
+`docker run --rm --entrypoint sh ner-annotator -c 'cd backend && pytest && cd ../frontend && npm test'`.
 
 ## Keyboard shortcuts
 

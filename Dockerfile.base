@@ -1,0 +1,54 @@
+# syntax=docker/dockerfile:1
+#
+# Base image: all third-party dependencies (Python + Node toolchain and
+# packages), but none of the app's own source. Rebuild it only when
+# dependencies change (backend/pyproject.toml, frontend/package.json or
+# frontend/package-lock.json).
+#
+# 1) Locally (with internet access): build the image and export it to a tar.
+#
+#   docker build -f Dockerfile.base -t ner-annotator-base:<tag> .
+#   docker save ner-annotator-base:<tag> | gzip > ner-annotator-base_<tag>.tar.gz
+#
+# 2) On-prem: copy the tar over, load it, tag it for the on-prem Artifactory
+#    and push it.
+#
+#   docker load -i ner-annotator-base_<tag>.tar.gz
+#   docker tag ner-annotator-base:<tag> <artifactory>/ner-annotator-base:<tag>
+#   docker push <artifactory>/ner-annotator-base:<tag>
+#
+# Then build the app image on-prem from it (see Dockerfile):
+#
+#   docker build --build-arg BASE_IMAGE=<artifactory>/ner-annotator-base:<tag> -t ner-annotator .
+
+# ── Node toolchain + frontend packages ────────────────────────────
+FROM node:20-slim AS node
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci \
+ && npm cache clean --force \
+ # npm can exit 0 on network failures; make sure the toolchain is really there.
+ && test -x node_modules/.bin/vite && test -x node_modules/.bin/tsc
+
+# ── Base image ────────────────────────────────────────────────────
+FROM python:3.12-slim AS base
+
+# Node runtime + npm, so the app image can build the frontend offline.
+COPY --from=node /usr/local/bin/node /usr/local/bin/node
+COPY --from=node /usr/local/lib/node_modules /usr/local/lib/node_modules
+RUN ln -s ../lib/node_modules/npm/bin/npm-cli.js /usr/local/bin/npm \
+ && ln -s ../lib/node_modules/npm/bin/npx-cli.js /usr/local/bin/npx
+
+# Frontend node_modules live where the app image will copy frontend/ to.
+# (.dockerignore excludes node_modules, so that COPY won't clobber them.)
+COPY --from=node /app/frontend/node_modules /app/frontend/node_modules
+
+# Python dependencies: install the backend with all extras to pull in its
+# dependency tree, then remove the package itself so only deps remain
+# (the app image runs the backend from source via PYTHONPATH).
+WORKDIR /app
+COPY backend/pyproject.toml ./backend/
+RUN mkdir -p backend/ner_annotator && touch backend/ner_annotator/__init__.py \
+ && pip install --no-cache-dir "./backend[mongo,dev]" \
+ && pip uninstall -y ner-annotator \
+ && rm -rf backend
