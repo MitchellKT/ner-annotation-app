@@ -170,6 +170,44 @@ cd backend && python -m ner_annotator -i ../sample/input.jsonl -o ../sample/anno
 cd frontend && npm run dev      # http://localhost:5173
 ```
 
+### Docker (base image + app image)
+
+The image is split in two so the app can be built in an on-prem / air-gapped environment:
+
+- **`Dockerfile.base`** holds every third-party dependency: Python packages (incl. the `mongo` and
+  `dev` extras), Node + npm, and the frontend `node_modules`. Build it once where the internet
+  (or your Artifactory remotes) is reachable and push it to your registry. Rebuild it only when
+  `backend/pyproject.toml`, `frontend/package.json` or `frontend/package-lock.json` change.
+- **`Dockerfile`** starts `FROM` that base image, copies the repo, installs the backend (editable)
+  and builds the frontend. It needs **no network access**.
+
+```bash
+REG=artifactory.example.com/docker-local          # your registry / repo
+
+# once (or whenever dependencies change)
+docker build -f Dockerfile.base -t $REG/ner-annotator-base:1 .
+docker push $REG/ner-annotator-base:1
+
+# every time the code changes — offline
+docker build --build-arg BASE_IMAGE=$REG/ner-annotator-base:1 -t ner-annotator .
+docker run -p 8000:8000 -v "$PWD/sample:/data" ner-annotator \
+  --input /data/input.jsonl --output /data/annotations.jsonl --types PER,LOC,ORG,TIME
+```
+
+If the base build itself must go through Artifactory, point every upstream at it with build args:
+
+```bash
+docker build -f Dockerfile.base \
+  --build-arg PYTHON_IMAGE=$REG/python:3.12-slim \
+  --build-arg NODE_IMAGE=$REG/node:20-slim \
+  --build-arg PIP_INDEX_URL=https://artifactory.example.com/api/pypi/pypi-remote/simple \
+  --build-arg NPM_REGISTRY=https://artifactory.example.com/api/npm/npm-remote/ \
+  -t $REG/ner-annotator-base:1 .
+```
+
+Tests and frontend builds also run offline inside the app image, e.g.
+`docker run --rm --entrypoint sh ner-annotator -c 'cd backend && pytest && cd ../frontend && npm test'`.
+
 ## Keyboard shortcuts
 
 There is **one digit key per configured `--types` entry** (the first nine, `1`–`9`); the toolbar

@@ -1,23 +1,22 @@
 # syntax=docker/dockerfile:1
+#
+# App image: starts from the prebuilt base image (see Dockerfile.base), copies
+# the repo, builds the frontend and runs the app. Needs no network access, so
+# it builds quickly inside an on-prem / air-gapped environment.
+#
+#   docker build --build-arg BASE_IMAGE=<registry>/ner-annotator-base:<tag> -t ner-annotator .
 
-# ── Frontend build ────────────────────────────────────────────────
-FROM node:20-slim AS frontend
-WORKDIR /app/frontend
-COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
-COPY frontend/ ./
-RUN npm run build
+ARG BASE_IMAGE=ner-annotator-base:latest
+FROM ${BASE_IMAGE}
 
-# ── Backend runtime ───────────────────────────────────────────────
-FROM python:3.12-slim AS runtime
 WORKDIR /app
+COPY . .
 
-COPY backend/pyproject.toml backend/uv.lock ./backend/
-COPY backend/ner_annotator ./backend/ner_annotator
-# Install with the "mongo" extra so pymongo is present for --mongo-uri exports.
-RUN pip install --no-cache-dir "./backend[mongo]"
+# Backend: editable install against the deps already in the base image.
+RUN pip install --no-cache-dir --no-deps --no-build-isolation --no-index -e ./backend
 
-COPY --from=frontend /app/frontend/dist ./frontend/dist
+# Frontend: node_modules come from the base image.
+RUN cd frontend && npm run build
 
 VOLUME ["/data"]
 EXPOSE 8000
